@@ -2,179 +2,127 @@
 
 /* INCLUDES *******************************************************************/
 
-#include "../ntrtl.h"
-#include <bcrypt.h>
+#include <ntifs.h>
+#include <windef.h>
+#include "../WinCertK.h"
+
+/* GLOBALS ********************************************************************/
+
+const LARGE_INTEGER WcHalfSecond = { (ULONG)(-5 * 100 * 1000 * 10), -1 };
 
 /* FUNCTIONS ******************************************************************/
 
+NTSYSAPI
 NTSTATUS
 NTAPI
-RtlVerifyImageSignatureByHandle(
-    _In_ HANDLE FileHandle
+MmCreateSection(
+    _Out_ PVOID* SectionObject,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_opt_ PLARGE_INTEGER InputMaximumSize,
+    _In_ ULONG SectionPageProtection,
+    _In_ ULONG AllocationAttributes,
+    _In_opt_ HANDLE FileHandle,
+    _In_opt_ PFILE_OBJECT FileObject
+    );
+
+#pragma alloc_text(PAGED, WcVerifyFileSignatureByFileObject)
+
+NTSTATUS
+NTAPI
+WcVerifyFileSignatureByFileObject(
+    _In_ PFILE_OBJECT FileObject
     )
+/*++
+
+Routine Description:
+
+    This function creates a section object for the specified file, mapps it to
+    the system address space and checks the digital signature (if one exists).
+
+Arguments:
+
+    FileObject - A pointer to the file object to check.
+
+Return Value:
+
+    NTSTATUS.
+
+--*/
 {
+    BOOLEAN Attached = FALSE;
+    KAPC_STATE ApcState;
     NTSTATUS Status;
-    IO_STATUS_BLOCK IoStatusBlock;
+    PVOID SectionObject;
     FILE_STANDARD_INFORMATION FileStdInfo;
-    HANDLE SectionHandle;
+    ULONG ReturnedLength;
     PVOID ImageBase;
     SIZE_T ViewSize;
+    ULONG RetryCount;
 
-    Status = ZwQueryInformationFile(FileHandle,
-                                    &IoStatusBlock,
-                                    &FileStdInfo,
+    PAGED_CODE();
+
+    if (!FileObject)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = IoQueryFileInformation(FileObject,
+                                    FileStandardInformation,
                                     sizeof(FileStdInfo),
-                                    FileStandardInformation);
+                                    &FileStdInfo,
+                                    &ReturnedLength);
     if (NT_ERROR(Status))
         return Status;
 
-    Status = ZwCreateSection(&SectionHandle,
-                             SECTION_MAP_READ,
-                             NULL,
-                             NULL,
-                             PAGE_READONLY,
-                             SEC_COMMIT,
-                             FileHandle);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    RetryCount = 0;
+    for (;;) {
+        Status = MmCreateSection(&SectionObject,
+                                 SECTION_MAP_READ,
+                                 NULL,
+                                 NULL,
+                                 PAGE_READONLY,
+                                 SEC_COMMIT,
+                                 NULL,
+                                 FileObject);
+        if (NT_SUCCESS(Status))
+            break;
 
-    ImageBase = NULL;
+        if (Status != STATUS_FILE_LOCK_CONFLICT || RetryCount >= 3)
+            return Status;
+
+        //
+        // The filesystem may have rejected the request for various
+        // reasons - try again.
+        //
+        RetryCount++;
+        KeDelayExecutionThread(KernelMode,
+                               FALSE,
+                               (PLARGE_INTEGER)&WcHalfSecond);
+    }
+
     ViewSize = 0;
-    Status = ZwMapViewOfSection(SectionHandle,
-                                ZwCurrentProcess(),
-                                &ImageBase,
-                                0,
-                                0,
-                                NULL,
-                                &ViewSize,
-                                ViewUnmap,
-                                0,
-                                PAGE_READONLY);
-    ZwClose(FileHandle);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    Status = MmMapViewInSystemSpace(SectionObject,
+                                    &ImageBase,
+                                    &ViewSize);
+    if (NT_SUCCESS(Status)) {
+        if (FileStdInfo.EndOfFile.QuadPart > (LONGLONG)ViewSize) {
+            Status = STATUS_INVALID_BLOCK_LENGTH;
+        }
+        else {
+            if (PsGetCurrentProcess() != PsInitialSystemProcess) {
+                Attached = TRUE;
+                KeStackAttachProcess(PsInitialSystemProcess, &ApcState);
+            }
 
-    if (FileStdInfo.EndOfFile.QuadPart > (LONGLONG)ViewSize) {
-        Status = STATUS_INVALID_BLOCK_LENGTH;
-    }
-    else {
-        Status = RtlVerifyImageSignature(ImageBase, ViewSize, TRUE);
+            Status = WcVerifyImageSignature(ImageBase, ViewSize, FALSE);
+
+            if (Attached) {
+                KeUnstackDetachProcess(&ApcState);
+            }
+        }
+
+        MmUnmapViewInSystemSpace(ImageBase);
     }
 
-    ZwUnmapViewOfSection(ZwCurrentProcess(), ImageBase);
-    ZwClose(SectionHandle);
+    ObDereferenceObject(SectionObject);
     return Status;
-}
-
-static
-NTSTATUS
-RtlpHashImage(
-    _In_ PVOID ImageBase,
-    _In_ SIZE_T ImageSize,
-    _In_ LPCWSTR AlgorithmId
-    )
-{
-    NTSTATUS Status;
-    BCRYPT_ALG_HANDLE AlgorithmHandle = NULL;
-    BCRYPT_HASH_HANDLE HashHandle = NULL;
-    DWORD HashObjSize;
-    DWORD ReturnedLength;
-    PVOID HashObj = NULL;
-    DWORD HashSize;
-    PVOID Hash = NULL;
-
-    Status = BCryptOpenAlgorithmProvider(&AlgorithmHandle,
-                                         AlgorithmId,
-                                         NULL,
-                                         0);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    Status = BCryptGetProperty(AlgorithmHandle,
-                               BCRYPT_OBJECT_LENGTH,
-                               (PCHAR)&HashObjSize,
-                               sizeof(HashObjSize),
-                               &ReturnedLength,
-                               0);
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
-    HashObj = RtlpAllocateMemory(HashObjSize, 'OhsH');
-    if (!HashObj)
-        goto Cleanup;
-
-    Status = BCryptGetProperty(AlgorithmHandle,
-                               BCRYPT_HASH_LENGTH,
-                               (PCHAR)&HashSize,
-                               sizeof(HashSize),
-                               &ReturnedLength,
-                               0);
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
-    Hash = RtlpAllocateMemory(HashSize, 'hsaH');
-    if (!Hash)
-        goto Cleanup;
-
-    Status = BCryptCreateHash(AlgorithmHandle,
-                              &HashHandle,
-                              HashObj,
-                              HashObjSize,
-                              NULL,
-                              0,
-                              0);
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
-
-
-Cleanup:
-    if (Hash) {
-        RtlpFreeMemory(HashObj, 'OhsH');
-    }
-
-    if (HashObj) {
-        RtlpFreeMemory(HashObj, 'OhsH');
-    }
-
-    BCryptCloseAlgorithmProvider(AlgorithmHandle, 0);
-    return Status;
-}
-
-NTSTATUS
-NTAPI
-RtlVerifyImageSignature(
-    _In_ PVOID ImageBase,
-    _In_ SIZE_T ImageSize,
-    _In_ BOOLEAN MappedAsImage
-    )
-{
-    PIMAGE_NT_HEADERS NtHeaders;
-    CONST WIN_CERTIFICATE *CertTable;
-    ULONG CertTableSize;
-
-    if (LDR_IS_DATAFILE(ImageBase)) {
-        MappedAsImage = TRUE;
-        ImageBase = LDR_DATAFILE_TO_VIEW(ImageBase);
-    }
-
-    __try {
-        NtHeaders = RtlImageNtHeader(ImageBase);
-        if (!NtHeaders)
-            return STATUS_INVALID_IMAGE_FORMAT;
-
-        CertTable = RtlImageDirectoryEntryToData(ImageBase,
-                                                 MappedAsImage,
-                                                 IMAGE_DIRECTORY_ENTRY_SECURITY,
-                                                 &CertTableSize);
-        if (!CertTable)
-            return STATUS_INVALID_SIGNATURE;
-
-
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return STATUS_INVALID_IMAGE_FORMAT;
-    }
-
-    return STATUS_SUCCESS;
 }

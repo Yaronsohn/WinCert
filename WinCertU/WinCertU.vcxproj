@@ -18,6 +18,9 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="libsupp.c" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{CA327497-20F0-4AC2-8A8D-8CD0BA5AA736}</ProjectGuid>
     <RootNamespace>WinCert</RootNamespace>
