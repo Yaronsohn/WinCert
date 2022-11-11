@@ -2,40 +2,10 @@
 
 /* INCLUDES *******************************************************************/
 
-#include <ntifs.h>
-#include <windef.h>
-#include "../WinCert.h"
-#include <bcrypt.h>
+#include "WinCerti.h"
 #include <ntimage.h>
 
 /* FUNCTIONS ******************************************************************/
-
-#ifndef LDR_IS_DATAFILE
-#define LDR_IS_DATAFILE(x)      (((ULONG_PTR)(x)) &  (ULONG_PTR)1)
-#endif
-
-#ifndef LDR_DATAFILE_TO_VIEW
-#define LDR_DATAFILE_TO_VIEW(x) ((PVOID)(((ULONG_PTR)(x)) & ~(ULONG_PTR)1))
-#endif
-
-NTSYSAPI
-_Must_inspect_result_
-PIMAGE_NT_HEADERS
-NTAPI
-RtlImageNtHeader(
-    _In_ PVOID Base
-    );
-
-NTSYSAPI
-_Must_inspect_result_
-PVOID
-NTAPI
-RtlImageDirectoryEntryToData(
-    _In_ PVOID Base,
-    _In_ BOOLEAN MappedAsImage,
-    _In_ USHORT DirectoryEntry,
-    _Out_ PULONG Size
-    );
 
 NTSTATUS
 NTAPI
@@ -104,7 +74,7 @@ Return Value:
         Status = STATUS_INVALID_BLOCK_LENGTH;
     }
     else {
-        Status = WcVerifyImageSignature(ImageBase, ViewSize, TRUE);
+        Status = WcVerifyImageSignature(ImageBase, ViewSize);
     }
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), ImageBase);
@@ -118,7 +88,7 @@ WcpHashImage(
     _In_ PVOID ImageBase,
     _In_ SIZE_T ImageSize,
     _In_ LPCWSTR AlgorithmId,
-    _Out_ PCRYPT_DATA_BLOB HashBlob
+    _Out_ PBLOB HashBlob
     )
 /*++
 
@@ -395,8 +365,8 @@ Return Value:
         if (!NT_SUCCESS(Status))
             __leave;
 
-        HashBlob->cbData = HashSize;
-        HashBlob->pbData = Hash;
+        HashBlob->cbSize = HashSize;
+        HashBlob->pBlobData = Hash;
 
         Hash = NULL;
     }
@@ -406,6 +376,10 @@ Return Value:
 
     if (SectionTable) {
         WcFreeMemory(SectionTable, 'ThsH');
+    }
+
+    if (HashHandle) {
+        BCryptDestroyHash(HashHandle);
     }
 
     if (Hash) {
@@ -429,20 +403,20 @@ WcpCheckCertificate(
     _In_ CONST WIN_CERTIFICATE* Cert
     )
 {
-    ULONG EncodedDataLength;
-    CONST VOID *EncodedData;
+    NTSTATUS Status;
+    BLOB Data;
 
     //
     // We only support version 2
     //
     if (Cert->wRevision != WIN_CERT_REVISION_2_0)
-        return STATUS_INVALID_SIGNATURE;
+        return STATUS_NOT_SUPPORTED;
 
     //
     // We only support Authenticode signatures
     //
     if (Cert->wCertificateType != WIN_CERT_TYPE_PKCS_SIGNED_DATA)
-        return STATUS_INVALID_SIGNATURE;
+        return STATUS_NOT_SUPPORTED;
 
     //
     // Sanity check
@@ -450,21 +424,20 @@ WcpCheckCertificate(
     if (Cert->dwLength < (ULONG)FIELD_OFFSET(WIN_CERTIFICATE, bCertificate))
         return STATUS_INVALID_SIGNATURE;
 
-    EncodedDataLength = Cert->dwLength - FIELD_OFFSET(WIN_CERTIFICATE, bCertificate);
-    EncodedData = Cert->bCertificate;
+    Data.cbSize = Cert->dwLength - FIELD_OFFSET(WIN_CERTIFICATE, bCertificate);
+    Data.pBlobData = (PBYTE)Cert->bCertificate;
+    Status = Pkcs7Parse(&Data);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-
-
-
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 NTSTATUS
 NTAPI
 WcVerifyImageSignature(
     _In_ PVOID ImageBase,
-    _In_ SIZE_T ImageSize,
-    _In_ BOOLEAN MappedAsImage
+    _In_ SIZE_T ImageSize
     )
 /*++
 
@@ -472,14 +445,17 @@ Routine Description:
 
     This function checks the digital signature of the mapped image.
 
+    WARNING! Because this code is compatible between user mode and kernel mode,
+    the function does NOT probe the buffer pointed to by ImageBase before
+    accessing it - If the code is executed in kernel mode, it is the
+    responsibility of the caller to ensure the validity of the buffer -
+    including probing the whole ImageSize bytes, BEFORE calling this function.
+
 Arguments:
 
     ImageBase - Base address of the image to hash.
 
     ImageSize - The size (in bytes) of the image.
-
-    MappedAsImage - FALSE if the file is mapped as a data file.
-                    TRUE if the file is mapped as an image.
 
 Return Value:
 
@@ -487,34 +463,37 @@ Return Value:
 
 --*/
 {
-    PIMAGE_NT_HEADERS NtHeaders;
     PVOID CertTable;
     ULONG CertTableSize;
-    LPWIN_CERTIFICATE NextCert, CertEnd;
+    LPWIN_CERTIFICATE Cert, CertEnd;
 
     if (LDR_IS_DATAFILE(ImageBase)) {
-        MappedAsImage = TRUE;
         ImageBase = LDR_DATAFILE_TO_VIEW(ImageBase);
     }
 
     __try {
-        NtHeaders = RtlImageNtHeader(ImageBase);
-        if (!NtHeaders)
-            return STATUS_INVALID_IMAGE_FORMAT;
-
         CertTable = RtlImageDirectoryEntryToData(ImageBase,
-                                                 MappedAsImage,
+                                                 TRUE,
                                                  IMAGE_DIRECTORY_ENTRY_SECURITY,
                                                  &CertTableSize);
         if (!CertTable)
             return STATUS_INVALID_SIGNATURE;
 
-        NextCert = (LPWIN_CERTIFICATE)CertTable;
+        Cert = (LPWIN_CERTIFICATE)CertTable;
         CertEnd = (LPWIN_CERTIFICATE)RtlOffsetToPointer(CertTable, CertTableSize);
-        while (NextCert < CertEnd) {
+        while (Cert < CertEnd) {
 
+            WcpCheckCertificate(Cert);
 
-            NextCert = (LPWIN_CERTIFICATE)RtlOffsetToPointer(NextCert, NextCert->dwLength);
+            //
+            // Get the next certificate
+            //
+            Cert = (LPWIN_CERTIFICATE)RtlOffsetToPointer(Cert, Cert->dwLength);
+
+            //
+            // Align to 8 bytes
+            //
+            Cert = (LPWIN_CERTIFICATE)ALIGN_UP_POINTER_BY(Cert, 8);
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {

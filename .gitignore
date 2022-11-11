@@ -1,3 +1,4 @@
 *.user
 [xX]64/
 [wW]in32/
+/test/.vs/test

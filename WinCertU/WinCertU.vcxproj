@@ -60,8 +60,8 @@
   <!--Leave the following line for compatibility with other projects-->
   <Import Condition="Exists('$(SolutionDir)config\$(SolutionName).SDK.props')" Project="$(SolutionDir)config\$(SolutionName).SDK.props" />
   <Import Condition="Exists('$(SolutionDir)config\Base.props')" Project="$(SolutionDir)config\Base.props" />
+  <Import Condition="Exists('$(SolutionDir)config\nocrtdll.props')" Project="$(SolutionDir)config\nocrtdll.props" />
   <ImportGroup Label="PropertySheets">
-    <Import Project="$(SolutionDir)config\nocrtdll.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
@@ -70,14 +70,16 @@
   <!--Set up parameters according to the subsystem selected-->
   <Import Condition="Exists('$(SolutionDir)config\PostPropertyGroup.props')" Project="$(SolutionDir)config\PostPropertyGroup.props" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Lib>
-      <AdditionalDependencies>WinCert.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
+    <Lib />
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <Lib>
-      <AdditionalDependencies>WinCert.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
+    <Lib />
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -85,9 +87,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
     </ClCompile>
-    <Lib>
-      <AdditionalDependencies>WinCert.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -95,9 +95,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
     </ClCompile>
-    <Lib>
-      <AdditionalDependencies>WinCert.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
+    <Lib />
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Condition="Exists('$(SolutionDir)config\PostProject.targets')" Project="$(SolutionDir)config\PostProject.targets" />
