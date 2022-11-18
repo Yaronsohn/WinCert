@@ -28,9 +28,10 @@ MmCreateSection(
 
 #pragma alloc_text(PAGED, WcVerifyFileSignatureByFileObject)
 
+_Must_inspect_result_
 NTSTATUS
 NTAPI
-WcVerifyFileSignatureByFileObject(
+WcVerifyFileByFileObject(
     _In_ PFILE_OBJECT FileObject,
     _In_ DWORD DataType,
     _Out_opt_ PULONG ReturnedDataType,
@@ -40,7 +41,7 @@ WcVerifyFileSignatureByFileObject(
 
 Routine Description:
 
-    This function creates a section object for the specified file, mapps it to
+    This function creates a section object for the specified file, maps it to
     the system address space and checks the digital signature (if one exists).
 
 Arguments:

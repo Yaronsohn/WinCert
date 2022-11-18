@@ -25,9 +25,10 @@ Revision:
 extern "C" {
 #endif
 
+_Must_inspect_result_
 NTSTATUS
 NTAPI
-WcVerifyFileSignatureByFileObject(
+WcVerifyFileByFileObject(
     _In_ PFILE_OBJECT FileObject,
     _In_ DWORD DataType,
     _Out_opt_ PULONG ReturnedDataType,

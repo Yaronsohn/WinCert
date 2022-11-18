@@ -26,7 +26,7 @@ WcVerifyFileByHandle(
 
 Routine Description:
 
-    This function creates a section object for the specified file, mapps it to
+    This function creates a section object for the specified file, maps it to
     the system address space and checks the digital signature (if one exists).
 
 Arguments:
