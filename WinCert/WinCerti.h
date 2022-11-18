@@ -264,6 +264,15 @@ Base64Decode(
     _Out_ PBLOB Data
     );
 
+_Must_inspect_result_
+PCCHAR
+Base64Header(
+    _In_reads_(Count) PCCHAR In,
+    _In_ SIZE_T Count,
+    _In_ BOOLEAN Begin,
+    _Out_opt_ PCHAR* Start
+    );
+
 #ifdef __cplusplus
 }
 #endif

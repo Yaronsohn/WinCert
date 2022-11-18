@@ -6,6 +6,10 @@
 
 /* GLOBALS ********************************************************************/
 
+static CHAR BeginHeader[] = { '-','-','-','-','-','B','E','G','I','N', ' ' };
+static CHAR EndFooter[] = { '-','-','-','-','-','E','N','D',' ' };
+static CHAR MinusSeq[] = { '-','-','-','-','-' };
+
 static const BYTE ModTable[4] = { 0, 0, 1, 2 };
 static const CHAR ValTable[] = {
     /* 00: */ 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
@@ -162,4 +166,68 @@ Base64Decode(
     }
 
     return STATUS_SUCCESS;
+}
+
+_Must_inspect_result_
+PCCHAR
+Base64Header(
+    _In_reads_(Count) PCCHAR In,
+    _In_ SIZE_T Count,
+    _In_ BOOLEAN Begin,
+    _Out_opt_ PCHAR* Start
+    )
+{
+    DWORD len;
+    const CHAR* seq;
+    const CHAR* pc = In;
+    const CHAR* end = In + Count;
+
+    if (Begin) {
+        seq = BeginHeader;
+        len = sizeof(BeginHeader);
+    }
+    else {
+        seq = EndFooter;
+        len = sizeof(EndFooter);
+    }
+
+    for (;; pc++) {
+
+        //
+        // Progress until we find the first character of the sequence
+        //
+        for (;;) {
+            if ((pc + len) > end)
+                return NULL;
+
+            if (*pc == *seq)
+                break;
+
+            pc++;
+        }
+
+        //
+        // If we did not at the sequence yet resume from the start
+        //
+        if (strncmp(pc, seq, len) == 0)
+            break;
+    }
+
+    if (Start) {
+        *Start = (PCHAR)pc;
+    }
+
+    pc += len;
+
+    //
+    // Skip all characters until the minus sequence
+    //
+    while ((pc + sizeof(MinusSeq)) <= end) {
+        if (memcmp(pc, MinusSeq, sizeof(MinusSeq)) == 0)
+            return (PCCHAR)pc + sizeof(MinusSeq);
+
+        pc++;
+    }
+
+    return NULL;
 }
