@@ -28,7 +28,10 @@ extern "C" {
 NTSTATUS
 NTAPI
 WcVerifyFileSignatureByFileObject(
-    _In_ PFILE_OBJECT FileObject
+    _In_ PFILE_OBJECT FileObject,
+    _In_ DWORD DataType,
+    _Out_opt_ PULONG ReturnedDataType,
+    _In_opt_ const WIN_CERT_OPTIONS* Options
     );
 
 #ifdef __cplusplus

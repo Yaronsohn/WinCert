@@ -31,7 +31,10 @@ MmCreateSection(
 NTSTATUS
 NTAPI
 WcVerifyFileSignatureByFileObject(
-    _In_ PFILE_OBJECT FileObject
+    _In_ PFILE_OBJECT FileObject,
+    _In_ DWORD DataType,
+    _Out_opt_ PULONG ReturnedDataType,
+    _In_opt_ const WIN_CERT_OPTIONS* Options
     )
 /*++
 
@@ -43,6 +46,13 @@ Routine Description:
 Arguments:
 
     FileObject - A pointer to the file object to check.
+
+    DataType - The type of the data in the file specified by FileObject.
+
+    ReturnedDataType - Optionaly returns the value of the actual data type
+                       checked.
+
+    Options - Set of options that control how the check is done.
 
 Return Value:
 
@@ -61,9 +71,6 @@ Return Value:
     ULONG RetryCount;
 
     PAGED_CODE();
-
-    if (!FileObject)
-        return STATUS_INVALID_PARAMETER;
 
     Status = IoQueryFileInformation(FileObject,
                                     FileStandardInformation,
@@ -113,7 +120,11 @@ Return Value:
                 KeStackAttachProcess(PsInitialSystemProcess, &ApcState);
             }
 
-            Status = WcVerifyImageSignature(ImageBase, ViewSize, FALSE);
+            Status = WcVerifyData(ImageBase,
+                                  (SIZE_T)FileStdInfo.EndOfFile.QuadPart,
+                                  DataType,
+                                  ReturnedDataType,
+                                  Options);
 
             if (Attached) {
                 KeUnstackDetachProcess(&ApcState);

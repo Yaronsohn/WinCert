@@ -36,3 +36,12 @@ WcFreeMemory(
 
     ExFreePoolWithTag(Mem, Tag);
 }
+
+VOID
+NTAPI
+WcQuerySystemTime(
+    _Out_ PLARGE_INTEGER SystemTime
+    )
+{
+    KeQuerySystemTime(&SystemTime);
+}

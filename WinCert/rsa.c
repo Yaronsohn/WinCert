@@ -6,6 +6,12 @@
 
 /* FUNCTIONS ******************************************************************/
 
+enum {
+    RSAPublicKey_Modulus = 0,
+    RSAPublicKey_Exponent,
+    RSAPublicKey_Max
+};
+
 static
 NTSTATUS
 RSAParseRSAPublicKey(
@@ -15,13 +21,13 @@ RSAParseRSAPublicKey(
 {
     static const ASN1_VALUE_DECRIPTOR RSAPublicKeyDescription[] = {
         // 0 -RSAPublicKey ::= ASN1_TAG_SEQUENCE {
-        ADF_STEPIN | ADF_STEPOUT, ASN1_TAG_SEQUENCE, -1,
+        0, 0, ASN1_TAG_SEQUENCE, -1,
 
             // 0.0 - modulus INTEGER,    -- n
-            0, ASN1_TAG_INTEGER, RSAPublicKey_Modulus,
+            1, 0, ASN1_TAG_INTEGER, RSAPublicKey_Modulus,
 
             // 0.1 - publicExponent  INTEGER (0..4294967295) -- e
-            ADF_STEPOUT, ASN1_TAG_INTEGER, RSAPublicKey_Exponent,
+            1, 0, ASN1_TAG_INTEGER, RSAPublicKey_Exponent,
     };
 
     return Asn1Decode(Data,
@@ -31,7 +37,7 @@ RSAParseRSAPublicKey(
 }
 
 NTSTATUS
-RSABuildPubKeyContent(
+RSABuildPubKey(
     _In_ REFBLOB RSAPubKey,
     _Out_ PBLOB RSAKeyBlob
     )
@@ -50,13 +56,13 @@ RSABuildPubKeyContent(
     BlobSkip(&Modulus, 0);
 
     if (!Modulus.cbSize)
-        return STATUS_INVALID_RSA_INFORMATION;
+        return STATUS_ASN1_DECODING_ERROR;
 
     Exp = RSAPubKeyValues[RSAPublicKey_Exponent].Data;
     BlobSkip(&Exp, 0);
 
     if (!Exp.cbSize)
-        return STATUS_INVALID_RSA_INFORMATION;
+        return STATUS_ASN1_DECODING_ERROR;
 
     Status = BlobAlloc(RSAKeyBlob,
                        sizeof(BCRYPT_RSAKEY_BLOB) + Exp.cbSize + Modulus.cbSize);

@@ -12,8 +12,14 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinCert", "..\WinCert\WinCert.vcxproj", "{89F40B7C-334B-455B-ABB4-4D160845F387}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinCertU", "..\WinCertU\WinCertU.vcxproj", "{CA327497-20F0-4AC2-8A8D-8CD0BA5AA736}"
+	ProjectSection(ProjectDependencies) = postProject
+		{89F40B7C-334B-455B-ABB4-4D160845F387} = {89F40B7C-334B-455B-ABB4-4D160845F387}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinCertK", "..\WinCertK\WinCertK.vcxproj", "{A035A059-C803-415B-9D49-6E661D01FE68}"
+	ProjectSection(ProjectDependencies) = postProject
+		{89F40B7C-334B-455B-ABB4-4D160845F387} = {89F40B7C-334B-455B-ABB4-4D160845F387}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -92,16 +92,26 @@ RtlImageDirectoryEntryToData(
     _Out_ PULONG Size
     );
 
+VOID
+NTAPI
+WcQuerySystemTime(
+    _Out_ PLARGE_INTEGER SystemTime
+    );
+
+_Must_inspect_result_
 NTSTATUS
-Pkcs7Parse(
-    _In_ REFBLOB Data
+Pkcs7Verify(
+    _In_ REFBLOB Data,
+    _In_count_(Count) const BLOB DataToHash[],
+    _In_ ULONG Count,
+    _In_opt_ const WIN_CERT_OPTIONS* Options
     );
 
 enum {
     IndirectData_Type = 0,
     IndirectData_Algorithm,
     IndirectData_Parameters,
-    IndirectData_Hash,
+    IndirectData_Digest,
     IndirectData_Max
 };
 
@@ -112,51 +122,47 @@ enum {
     SignedData_Content,
     SignedData_Certificates,
     SignedData_Crls,
-    SignedData_SignerInfos,
-    SignedData_SignerInfos_Version,
-    SignedData_SignerInfos_Issuer,
-    SignedData_SignerInfos_SerialNumber,
-    SignedData_SignerInfos_DigestAlgId,
-    SignedData_SignerInfos_AuthAttr,
-    SignedData_SignerInfos_DigestEncrAlgoId,
-    SignedData_SignerInfos_EncrDigest,
-    SignedData_SignerInfos_UnauthAttr,
+    SignedData_SignerInfo,
+    SignedData_SignerInfo_Version,
+    SignedData_SignerInfo_Issuer,
+    SignedData_SignerInfo_SerialNumber,
+    SignedData_SignerInfo_DigestAlgId,
+    SignedData_SignerInfo_AuthAttr,
+    SignedData_SignerInfo_DigestEncrAlgoId,
+    SignedData_SignerInfo_EncrDigest,
+    SignedData_SignerInfo_UnauthAttr,
     SignedData_Max
 };
 
 enum {
-    Authenticode_OID = 0,
-    Authenticode_SignedData,
-    Authenticode_Max
+    Pkcs7_OID = 0,
+    Pkcs7_SignedData,
+    Pkcs7_Max
 };
 
-typedef enum _ALGORITHM_ID {
-    InvalidAlgorithm = -1,
-    SHA1,
-    SHA256,
-    MD2,
-    MD5,
-    AlgorithmMax
-} ALGORITHM_ID;
-
+_Must_inspect_result_
 LPCWSTR
-NTAPI
-HashGetAlgorithmName(
-    _In_ ALGORITHM_ID AlgId
-    );
-
-ALGORITHM_ID
 NTAPI
 HashDecodeAlgorithmIdentifier(
     _In_ REFBLOB ObjectIdentifier
     );
 
+_Must_inspect_result_
 NTSTATUS
 HashData(
-    _In_ ALGORITHM_ID AlgId,
+    _In_ LPCWSTR AlgId,
     _In_ ULONG Count,
     _In_count_(Count) const BLOB* Data,
     _Out_ PBLOB Hash
+    );
+
+_Must_inspect_result_
+NTSTATUS
+HashVerifySignedHash(
+    _In_ LPCWSTR AlgId,
+    _In_ REFBLOB Hash,
+    _In_ REFBLOB Signature,
+    _In_ REFBLOB PublicKeyInfo
     );
 
 //
@@ -185,26 +191,35 @@ typedef struct _CERT_VALUES {
     ASN1_VALUE Values[Certificate_Max];
 } CERT_VALUES, * PCERT_VALUES;
 
+typedef struct _CERT_EXTENSION {
+    BLOB Raw;
+    BLOB Id;
+    BOOLEAN Critical;
+    BLOB Value;
+} CERT_EXTENSION, *PCERT_EXTENSION;
+
+_Must_inspect_result_
 NTSTATUS
-NTAPI
-CertParseCertificate(
+X509ParseCertificate(
     _In_ REFBLOB Data,
     _Out_ PCERT_VALUES CertValues
     );
 
-const CERT_VALUES*
-CertFindCertificate(
-    _In_ REFBLOB Issuer,
-    _In_opt_ const BLOB* SerialNumber,
-    _In_count_(CertCount) const CERT_VALUES* Certificates,
-    _In_ ULONG CertCount
+_Must_inspect_result_
+NTSTATUS
+X509VerifyCertificate(
+    _In_ const CERT_VALUES* Certificate,
+    _In_opt_count_(Count) const CERT_VALUES* CertificateList,
+    _In_ ULONG Count,
+    _In_opt_ const WIN_CERT_OPTIONS* Options
     );
 
+_Must_inspect_result_
 NTSTATUS
-CertVerifyCertificate(
-    _In_ const CERT_VALUES* Certificate,
-    _In_count_(Count) const CERT_VALUES* CertificateList,
-    _In_ ULONG Count
+X520Check(
+    _In_ REFBLOB Data,
+    _In_ const WIN_CERT_X520* Comparand,
+    _In_ NTSTATUS MismatchStatus
     );
 
 #ifndef HASH_MAX_LENGTH
@@ -221,18 +236,14 @@ enum {
     PublicKeyInfo_Max
 };
 
-enum {
-    RSAPublicKey_Modulus = 0,
-    RSAPublicKey_Exponent,
-    RSAPublicKey_Max
-};
-
+_Must_inspect_result_
 NTSTATUS
-RSABuildPubKeyContent(
+RSABuildPubKey(
     _In_ REFBLOB RSAPubKey,
     _Out_ PBLOB RSAKeyBlob
     );
 
+_Must_inspect_result_
 NTSTATUS
 BlobAlloc(
     _Out_ PBLOB Blob,
@@ -242,6 +253,15 @@ BlobAlloc(
 VOID
 BlobFree(
     _Inout_ PBLOB Blob
+    );
+
+_Must_inspect_result_
+NTSTATUS
+Base64Decode(
+    _In_ PCCHAR In,
+    _In_ SIZE_T Count,
+    _In_ BOOLEAN Strict,
+    _Out_ PBLOB Data
     );
 
 #ifdef __cplusplus

@@ -89,6 +89,14 @@ __inline int BlobSkip(BLOB& blob, UCHAR value)
     ProgressBlob(blob, 1);
     return true;
 }
+
+#define BlobSkipBlob(blob1, blob2) \
+    ProgressBlob(blob1, (blob2).cbSize)
+
+__inline int IsNilBlob(REFBLOB blob)
+{
+    return blob.cbSize == 0 && blob.pBlobData == NULL;
+}
 #else
 #define REFBLOB const BLOB *
 
@@ -114,6 +122,14 @@ __inline int BlobSkip(BLOB* blob, UCHAR value)
 
     ProgressBlob(blob, 1);
     return TRUE;
+}
+
+#define BlobSkipBlob(blob1, blob2) \
+    ProgressBlob(blob1, (blob2)->cbSize)
+
+__inline int IsNilBlob(REFBLOB blob)
+{
+    return blob->cbSize == 0 && blob->pBlobData == NULL;
 }
 #endif
 

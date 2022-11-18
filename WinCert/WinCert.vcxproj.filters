@@ -15,16 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="signature.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="asn1.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="pkcs7.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="cert.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hash.c">
@@ -39,10 +33,33 @@
     <ClCompile Include="blob.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="X520.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="X509.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="file.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="image.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="base64.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="WinCerti.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\wcstatus.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="wcstatus.mc">
+      <Filter>Source Files</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

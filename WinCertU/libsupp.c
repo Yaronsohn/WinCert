@@ -64,3 +64,12 @@ WcFreeMemory(
 
     RtlFreeHeap(RtlGetProcessHeap(), 0, Mem);
 }
+
+VOID
+NTAPI
+WcQuerySystemTime(
+    _Out_ PLARGE_INTEGER SystemTime
+    )
+{
+    GetSystemTimeAsFileTime((LPFILETIME)SystemTime);
+}

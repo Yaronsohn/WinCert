@@ -9,12 +9,7 @@
 
 /* FUNCTIONS ******************************************************************/
 
-typedef struct _DESCEND_STACK_LOCATION {
-    BLOB Data;
-    BOOLEAN StepOut;
-} DESCEND_STACK_LOCATION, *PDESCEND_STACK_LOCATION;
-
-#define DESCEND_STACK_LENGTH        10
+#define DESCEND_STACK_LENGTH        16
 
 NTSTATUS
 NTAPI
@@ -48,7 +43,7 @@ Return Value:
     ULONG Length = Data->cbSize;
 
     if (Length < 2)
-        return STATUS_INVALID_BUFFER_SIZE;
+        return STATUS_ASN1_DECODING_ERROR;
 
     //
     // Save the raw pointer
@@ -84,13 +79,13 @@ Return Value:
         // Make sure we have that many bytes left
         //
         if (LengthOfLength > Length)
-            return STATUS_INVALID_BUFFER_SIZE;
+            return STATUS_ASN1_DECODING_ERROR;
 
         //
-        // We only support size_t number of bytes to hold the length
+        // We only support sizeof(DWORD) number of bytes to hold the length
         //
         if (LengthOfLength > sizeof(Value->Data.cbSize))
-            return STATUS_NOT_SUPPORTED;
+            return STATUS_ASN1_DECODING_ERROR;
 
         //
         // The length is stored MSB first, so we need to 
@@ -110,7 +105,7 @@ Return Value:
     }
 
     if (Length < Value->Data.cbSize)
-        return STATUS_INVALID_BUFFER_SIZE;
+        return STATUS_ASN1_DECODING_ERROR;
 
     Value->Data.pBlobData = Ptr;
     Value->Raw.cbSize += Value->Data.cbSize;
@@ -162,78 +157,91 @@ Return Value:
 
 --*/
 {
-    LONG StackLocation = -1;
-    DESCEND_STACK_LOCATION StepInStack[DESCEND_STACK_LENGTH];
+    BLOB Stack[DESCEND_STACK_LENGTH];
+    LONG StackPtr = 0;
     NTSTATUS Status = STATUS_SUCCESS;
     ULONG NextDesc = 0;
     ULONG ValueIndex;
     ASN1_VALUE value;
-    DESCEND_STACK_LOCATION sl;
+    BLOB State = *Data;
 
-    sl.Data = *Data;
-    sl.StepOut = FALSE;
-
-    for (;;) {
-        if (NextDesc == DescriptorCount)
-            return sl.Data.cbSize ? STATUS_MORE_ENTRIES : STATUS_SUCCESS;
-
-        if (!sl.Data.cbSize)
-            return STATUS_NO_MORE_ENTRIES;
-
-        Status = Asn1DecodeValue(&sl.Data, &value);
+    while (State.cbSize) {
+        Status = Asn1DecodeValue(&State, &value);
         if (!NT_SUCCESS(Status))
             return Status;
 
-        ProgressBlob(&sl.Data, value.Raw.cbSize);
+        BlobSkipAsn1Value(&State, &value);
 
         //
-        // We should skip NULL values
+        // Skip nil tags
         //
         if (value.Tag) {
+            if (NextDesc == DescriptorCount)
+                return STATUS_MORE_ENTRIES;
+
             if (Descriptors[NextDesc].Tag) {
                 while (Descriptors[NextDesc].Tag != value.Tag) {
                     if (!Descriptors[NextDesc].Optional)
-                        return STATUS_OBJECT_TYPE_MISMATCH;
+                        return STATUS_ASN1_DECODING_ERROR;
 
-                    if (++NextDesc == DescriptorCount)
-                        return sl.Data.cbSize ? STATUS_MORE_ENTRIES : STATUS_SUCCESS;
+                    do {
+                        if (++NextDesc >= DescriptorCount)
+                            return State.cbSize ? STATUS_MORE_ENTRIES : STATUS_SUCCESS;
+
+                    } while (Descriptors[NextDesc].Level > StackPtr);   
                 }
             }
-
-            sl.StepOut = !!Descriptors[NextDesc].StepOut;
 
             ValueIndex = Descriptors[NextDesc].ValueIndex;
             if (ValueIndex != -1) {
                 Values[ValueIndex] = value;
             }
 
-            if (Descriptors[NextDesc++].StepIn) {
-                if (TAG_TO_FORM(value.Tag) != ASN1_DER_FORM_CONSTRUCTED)
-                    return STATUS_INVALID_PARAMETER;
+            if ((NextDesc + 1) < DescriptorCount) {
+                NextDesc++;
+                if (Descriptors[NextDesc].Level > StackPtr) {
+                    if (TAG_TO_FORM(value.Tag) != ASN1_DER_FORM_CONSTRUCTED)
+                        return STATUS_ASN1_DECODING_ERROR;
 
-                if (++StackLocation >= DESCEND_STACK_LENGTH)
-                    return STATUS_INVALID_BUFFER_SIZE;
+                    if (++StackPtr >= DESCEND_STACK_LENGTH)
+                        return STATUS_ASN1_DECODING_ERROR;
 
-                StepInStack[StackLocation] = sl;
-
-                sl.Data = value.Data;
-                sl.StepOut = FALSE;
-                continue;
+                    Stack[StackPtr] = State;
+                    State = value.Data;
+                    continue;
+                }
             }
         }
 
-        while (StackLocation >= 0) {
-            if (!sl.StepOut) {
-                if (sl.Data.cbSize)
+        while (StackPtr > 0) {
+            if (Descriptors[NextDesc].Level == StackPtr) {
+                if (State.cbSize)
                     break;
 
-                while (NextDesc < DescriptorCount) {
-                    if (Descriptors[NextDesc++].StepOut)
+                while (++NextDesc < DescriptorCount) {
+                    if (Descriptors[NextDesc].Level < StackPtr) {
                         break;
+                    }
                 }
             }
 
-            sl = StepInStack[StackLocation--];
+            State = Stack[StackPtr--];
         }
     }
+
+    return NextDesc == DescriptorCount ? STATUS_SUCCESS : STATUS_NO_MORE_ENTRIES;
+}
+
+_Must_inspect_result_
+BOOLEAN
+NTAPI
+IsEqualAsn1Value(
+    _In_ const ASN1_VALUE* Target,
+    _In_ const ASN1_VALUE* Comparand
+    )
+{
+    if (Comparand->Tag && (Comparand->Tag != Target->Tag))
+        return FALSE;
+
+    return IsEqualBLOB(&Comparand->Data, &Target->Data);
 }

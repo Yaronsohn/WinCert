@@ -112,7 +112,7 @@ StoreFindElement(
     while (Remaining >= sizeof(FILE_ELEMENT_HDR)) {
         Remaining -= sizeof(FILE_ELEMENT_HDR);
         if (Remaining < ElmHdr->dwLen)
-            return STATUS_BAD_DATA;
+            return STATUS_CERT_MALFORMED;
 
         if (ElmHdr->dwEleType == ElmType) {
             Element->cbSize = ElmHdr->dwLen;
