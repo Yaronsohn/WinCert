@@ -49,6 +49,7 @@ Arguments:
     FileObject - A pointer to the file object to check.
 
     DataType - The type of the data in the file specified by FileObject.
+               See WcVerifyData.
 
     ReturnedDataType - Optionaly returns the value of the actual data type
                        checked.

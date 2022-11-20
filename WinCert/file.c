@@ -28,6 +28,7 @@ Arguments:
     FileObject - A handl to the file to check.
 
     DataType - The type of the data in the file specified by FileHandle.
+               See WcVerifyData.
 
     ReturnedDataType - Optionaly returns the value of the actual data type
                        checked.
@@ -169,17 +170,54 @@ WcVerifyData(
     _Out_opt_ PULONG ReturnedDataType,
     _In_opt_ const WIN_CERT_OPTIONS* Options
     )
+/*++
+
+Routine Description:
+
+    This function verifies the data's validity according to the data type.
+
+Arguments:
+
+    Data - Base address of the data.
+
+    Size - The size (in bytes) of the data pointed to by the Data argument.
+
+    DataType - Indicates the type of data pointed to by the Data argument:
+
+               DATA_TYPE_ANY                - The data might be any of the
+                                              supported type.
+               DATA_TYPE_IMAGE              - Image file (PE/PE+).
+               DATA_TYPE_CERT_BASE64_HDR    - The data is a base64 encoded
+                                              certificate with the BEGIN-END
+                                              header and footer.
+               DATA_TYPE_CERT_BASE64        - The data is base64 encoded
+                                              certificate.
+               DATA_TYPE_CERT_BINARY        - The data is a binary DER
+                                              encoded certificate.
+               DATA_TYPE_CERT_ANY           - The data might be any of the
+                                              DATA_TYPE_CERT_XXX types.
+
+    ReturnedDataType - On return, it will be set to the actual data type
+                       the function used to do the varification.
+
+    Options - Set of options that control how the check is done.
+
+Return Value:
+
+    NTSTATUS.
+
+--*/
 {
     ULONG Count;
     ULONG i;
     NTSTATUS Status;
-    const DWORD* DataTypePtr;
     ULONG LocalReturnedDataType;
+    const DWORD* DataTypePtr;
     static const DWORD TypeOrder[] = {
         DATA_TYPE_IMAGE,
         DATA_TYPE_CERT_BASE64_HDR,
         DATA_TYPE_CERT_BASE64,
-        DATA_TYPE_CERT_BINARY
+        DATA_TYPE_CERT_BINARY,
     };
 
     if (!ReturnedDataType) {
@@ -207,12 +245,10 @@ WcVerifyData(
 
     for (i = 0; i < Count; i++) {
         Status = _WcVerifyData(Data, Size, *DataTypePtr, Options);
-        *ReturnedDataType = *DataTypePtr;
+        *ReturnedDataType = *DataTypePtr++;
 
         if (Status != STATUS_BAD_DATA && Status != STATUS_INVALID_IMAGE_FORMAT)
             return Status;
-
-        DataTypePtr++;
     }
 
     return Status;

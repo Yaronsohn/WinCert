@@ -15,24 +15,30 @@ int main()
     WIN_CERT_X520 X520 = { 0 };
     WIN_CERT_OPTIONS options = { 0 };
     DWORD DataType;
+    IO_STATUS_BLOCK IoStatusBlock;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING NameString;
     static const BYTE CommonName[] = { 'A','d','o','b','e',' ','I','n','c','.' };
 
-    FileHandle = CreateFileW(L"\\\\?\\GlobalRoot\\SystemRoot\\system32\\ntdll.dll",
-                             //L"C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe",
-                             GENERIC_READ,
-                             FILE_SHARE_READ | FILE_SHARE_DELETE,
-                             NULL,
-                             OPEN_EXISTING,
-                             0,
-                             NULL);
-    if (FileHandle == INVALID_HANDLE_VALUE)
-        return NULL;
+    RtlInitUnicodeString(&NameString, L"\\SystemRoot\\system32\\ntdll.dll");
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &NameString,
+                               OBJ_CASE_INSENSITIVE,
+                               0,
+                               NULL);
+    Status = NtOpenFile(&FileHandle,
+                        GENERIC_READ | SYNCHRONIZE,
+                        &ObjectAttributes,
+                        &IoStatusBlock,
+                        FILE_SHARE_READ | FILE_SHARE_DELETE,
+                        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    X520.Attributes[X520_CommonName].Data.pBlobData = (PBYTE)CommonName;
-    X520.Attributes[X520_CommonName].Data.cbSize = sizeof(CommonName);
-
+    //
+    // Initialize the size field
+    //
     options.Size = sizeof(options);
-    //options.Subject = &X520;
 
     Status = WcVerifyFileByHandle(FileHandle, 0, &DataType, &options);
 

@@ -751,6 +751,9 @@ X509VerifyCertificate(
     LARGE_INTEGER Time;
 
     if (Options) {
+        if (Options->Size != sizeof(WIN_CERT_OPTIONS_1))
+            return STATUS_INVALID_PARAMETER;
+
         Context.Flags = Options->Flags;
 
         RtlCopyMemory(Context.ChainOptions,
