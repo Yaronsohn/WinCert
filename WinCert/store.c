@@ -20,7 +20,7 @@ static const UNICODE_STRING BlobValueName = RTL_CONSTANT_STRING(L"Blob");
 // Each value starts with FILE_ELEMENT_HDR structure that indicates the type and
 // length of the value.
 // WinCrypt.h contains most of the types for these value, with a notable omission
-// of values 32 to 35 (basically what we're interested in.
+// of values 32 to 35 - basically what we're interested in.
 //
 #include <pshpack1.h>
 typedef struct _FILE_ELEMENT_HDR {
