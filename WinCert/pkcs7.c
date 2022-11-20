@@ -4,20 +4,16 @@
 
 #define INITBLOB
 #include "WinCerti.h"
+#include "../wcoid.h"
 
 /* GLOBALS ********************************************************************/
 
-// 1.3.6.1.4.1.311.2.1.15
-DEFINE_BLOB(SPC_PE_IMAGE_DATAOBJ, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x0F)
+static const KEY_USAGE_BITS PKCS7KeyUsage[ChainMax] = {
 
-// 1.3.6.1.4.1.311.2.1.4
-DEFINE_BLOB(SPC_INDIRECT_DATA_OBJID, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x04)
-
-// 1.2.840.113549.1.7.2
-DEFINE_BLOB(OID_RSA_PKCS7, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02)
-
-// 1.2.840.113549.1.9.4
-DEFINE_BLOB(OID_messageDigest, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x04)
+    KEY_USAGE_DIGITAL_SIGNATURE,
+    KEY_USAGE_DIGITAL_SIGNATURE,
+    KEY_USAGE_DIGITAL_SIGNATURE
+};
 
 /* FUNCTIONS ******************************************************************/
 
@@ -394,7 +390,7 @@ Pkcs7VerifySignedData(
     //
     // Verify the certificate
     //
-    Status = X509VerifyCertificate(Cert, Certificates, CertCount, Options);
+    Status = X509VerifyCertificate(Cert, Certificates, CertCount, Options, PKCS7KeyUsage);
     if (!NT_SUCCESS(Status))
         return Status;
 

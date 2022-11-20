@@ -5,55 +5,11 @@
 #define INITBLOB
 
 #include "WinCerti.h"
+#include "../wcoid.h"
 
 #pragma warning(disable:4996)
 
 /* GLOBALS ********************************************************************/
-
-// 2.5.29.9
-DEFINE_BLOB(OID_EXT_SUBJECT_DIR_ATTR, 0x55, 0x1D, 0x09)
-
-// 2.5.29.14
-DEFINE_BLOB(OID_EXT_SUBJECT_KEY_ID, 0x55, 0x1D, 0x0E)
-
-// 2.5.29.15
-DEFINE_BLOB(OID_EXT_KEY_USAGE, 0x55, 0x1D, 0x0F)
-
-// 2.5.29.17
-DEFINE_BLOB(OID_EXT_SUBJECT_ALT_NAME, 0x55, 0x1D, 0x11)
-
-// 2.5.29.18
-DEFINE_BLOB(OID_EXT_ISSUER_ALT_NAME, 0x55, 0x1D, 0x12)
-
-// 2.5.29.19
-DEFINE_BLOB(OID_EXT_BASIC_CONST, 0x55, 0x1D, 0x13)
-
-// 2.5.29.30
-DEFINE_BLOB(OID_EXT_NAME_CONST, 0x55, 0x1D, 0x1E)
-
-// 2.5.29.31
-DEFINE_BLOB(OID_EXT_CRL_DIST_POINT, 0x55, 0x1D, 0x1F)
-
-// 2.5.29.32
-DEFINE_BLOB(OID_EXT_CERT_POLICY, 0x55, 0x1D, 0x20)
-
-// 2.5.29.33
-DEFINE_BLOB(OID_EXT_POLICY_MAPPINGS, 0x55, 0x1D, 0x21)
-
-// 2.5.29.35
-DEFINE_BLOB(OID_EXT_AUTH_KEY_ID, 0x55, 0x1D, 0x23)
-
-// 2.5.29.36
-DEFINE_BLOB(OID_EXT_POLICY_CONST, 0x55, 0x1D, 0x24)
-
-// 2.5.29.37
-DEFINE_BLOB(OID_EXT_EX_KEY_USAGE, 0x55, 0x1D, 0x25)
-
-// 2.5.29.46
-DEFINE_BLOB(OID_EXT_FRESHEST_CRL, 0x55, 0x1D, 0x2E)
-
-// 2.5.29.54
-DEFINE_BLOB(OID_EXT_INHIBIT_ANY_POLICY, 0x55, 0x1D, 0x36)
 
 static const BLOB* const KnownExtensions[] = {
     &OID_EXT_SUBJECT_DIR_ATTR,
@@ -73,13 +29,43 @@ static const BLOB* const KnownExtensions[] = {
     &OID_EXT_INHIBIT_ANY_POLICY
 };
 
+static const struct {
+    REFBLOB Id;
+    WORD KeyUsageBits;
+} ExKeyUsageTable[] = {
+    { &OID_EXT_EKU_ANY_EXT_KEY_USAGE,   0x80FF, },
+    { &OID_EXT_EKU_SERVER_AUTH,         KEY_USAGE_DIGITAL_SIGNATURE | KEY_USAGE_KEY_AGREEMENT },
+    { &OID_EXT_EKU_CLIENT_AUTH,         KEY_USAGE_DIGITAL_SIGNATURE | KEY_USAGE_KEY_AGREEMENT },
+    { &OID_EXT_EKU_CODE_SIGNING,        KEY_USAGE_DIGITAL_SIGNATURE },
+    { &OID_EXT_EKU_EMAIL_PROT,          KEY_USAGE_DIGITAL_SIGNATURE | KEY_USAGE_NON_REPUDIATION | KEY_USAGE_KEY_AGREEMENT },
+    { &OID_EXT_EKU_TIME_STAMPING,       KEY_USAGE_DIGITAL_SIGNATURE | KEY_USAGE_NON_REPUDIATION },
+    { &OID_EXT_EKU_OCSP_SIGNING,        KEY_USAGE_DIGITAL_SIGNATURE | KEY_USAGE_NON_REPUDIATION },
+};
+
+static const KEY_USAGE_BITS GenericDefaultKeyUsage[ChainMax] = {
+    0,
+    KEY_USAGE_DIGITAL_SIGNATURE,
+    KEY_USAGE_DIGITAL_SIGNATURE
+};
+
 /* FUNCTIONS ******************************************************************/
 
 #define CERT_MEM_TAG        'treC'
 
-#ifndef CERT_CHAIN_MAX_ATTEMPTS
-#define CERT_CHAIN_MAX_ATTEMPTS 16
+#ifdef CERT_CHAIN_MAX_LENGTH
+#if CERT_CHAIN_MAX_LENGTH >= MAXWORD
+#error ERROR! CERT_CHAIN_MAX_LENGTH Must must be less than MAXWORD.
 #endif
+#else
+#define CERT_CHAIN_MAX_LENGTH   16
+#endif
+
+typedef struct _CERT_VERIFICATION_CONTEXT {
+    WORD ChainLength;
+    WORD MaxChainLength;
+    ULONG Flags;
+    WIN_CERT_CHAIN_OPTIONS ChainOptions[ChainMax];
+} CERT_VERIFICATION_CONTEXT, *PCERT_VERIFICATION_CONTEXT;
 
 _Must_inspect_result_
 NTSTATUS
@@ -173,6 +159,7 @@ X509NextExtension(
                      RtlPointerToOffset(Tmp.pBlobData, Ext->Raw.pBlobData) + Ext->Raw.cbSize);
     }
 
+    RtlZeroMemory(Ext, sizeof(CERT_EXTENSION));
     if (Tmp.cbSize == 0)
         return STATUS_NO_MORE_ENTRIES;
 
@@ -183,8 +170,6 @@ X509NextExtension(
     //     extnValue   OCTET STRING
     // }
     //
-
-    RtlZeroMemory(Ext, sizeof(CERT_EXTENSION));
     Status = Asn1DecodeValue(&Tmp, &Value);
     if (!NT_SUCCESS(Status))
         return Status;
@@ -211,9 +196,7 @@ X509NextExtension(
         return Status;
 
     if (Value.Tag == ASN1_TAG_BOOLEAN) {
-        while (Value.Data.cbSize--) {
-            Ext->Critical = Ext->Critical || *Value.Data.pBlobData++;
-        }
+        Ext->Critical = Asn1ReadBoolean(&Value.Data);
 
         BlobSkipAsn1Value(&Tmp, &Value);
     }
@@ -250,23 +233,22 @@ X509FindExtension(
     return Status;
 }
 
-__forceinline
+FORCEINLINE
 const CERT_VALUES*
 X509FindCertificateBySubject(
     _In_ REFBLOB Subject,
-    _In_count_(CertCount) const CERT_VALUES* Certificates,
+    _In_opt_count_(CertCount) const CERT_VALUES* Certificates,
     _In_ ULONG CertCount
     )
 {
-    const CERT_VALUES* cert;
+    if (Subject->cbSize) {
+        const CERT_VALUES* cert;
 
-    if (Subject->cbSize == 0)
-        return NULL;
-
-    while (CertCount--) {
-        cert = Certificates++;
-        if (IsEqualBLOB(&cert->Values[Certificate_Subject].Data, Subject))
-            return cert;
+        while (CertCount--) {
+            cert = Certificates++;
+            if (IsEqualBLOB(&cert->Values[Certificate_Subject].Data, Subject))
+                return cert;
+        }
     }
 
     return NULL;
@@ -522,27 +504,142 @@ X509DecodeTime(
 
 static
 NTSTATUS
+X509ResolveKeyUsage(
+    _In_ const CERT_VALUES* Cert,
+    _Out_ PKEY_USAGE_BITS Flags,
+    _Out_ PBLOB OidList
+    )
+{
+    CERT_EXTENSION Ext;
+    NTSTATUS Status;
+    ASN1_VALUE ExtValue;
+
+    Flags->Combined = 0;
+
+    Status = X509FindExtension(Cert, &OID_EXT_KEY_USAGE, &Ext);
+    if (NT_SUCCESS(Status)) {
+        Status = Asn1DecodeValue(&Ext.Value, &ExtValue);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        if (ExtValue.Tag != ASN1_TAG_BITSTRING)
+            return STATUS_CERT_MALFORMED;
+
+        RtlCopyMemory(&Flags->Combined,
+                      ExtValue.Data.pBlobData,
+                      min(ExtValue.Data.cbSize, sizeof(Flags->Combined)));
+    }
+
+    Status = X509FindExtension(Cert, &OID_EXT_EX_KEY_USAGE, &Ext);
+    if (NT_SUCCESS(Status)) {
+        ULONG i;
+        ASN1_VALUE Oid;
+
+        Status = Asn1DecodeValue(&Ext.Value, &ExtValue);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        if (ExtValue.Tag != ASN1_TAG_SEQUENCE)
+            return STATUS_CERT_MALFORMED;
+
+        *OidList = ExtValue.Data;
+
+        while (ExtValue.Data.cbSize) {
+            Status = Asn1DecodeValue(&ExtValue.Data, &Oid);
+            if (!NT_SUCCESS(Status))
+                return Status;
+
+            if (Oid.Tag != ASN1_TAG_OID) {
+                Status = STATUS_CERT_MALFORMED;
+                break;
+            }
+
+            for (i = 0; i < RTL_NUMBER_OF(ExKeyUsageTable); i++) {
+                if (IsEqualBLOB(&Oid.Data, ExKeyUsageTable[i].Id)) {
+                    Flags->Combined |= ExKeyUsageTable[i].KeyUsageBits;
+                }
+            }
+
+            BlobSkipAsn1Value(&ExtValue.Data, &Oid);
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
+FORCEINLINE
+NTSTATUS
+X509InOidInList(
+    _In_ REFBLOB Oid,
+    _In_ REFBLOB OidList
+    )
+{
+    BLOB Data = *OidList;
+    NTSTATUS Status;
+    ASN1_VALUE Value;
+
+    while (Data.cbSize) {
+        Status = Asn1DecodeValue(&Data, &Value);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        if (Value.Tag != ASN1_TAG_OID)
+            return STATUS_ASN1_DECODING_ERROR;
+
+        if (IsEqualBLOB(Oid, &Value.Data))
+            return STATUS_SUCCESS;
+
+        BlobSkipAsn1Value(&Data, &Value);
+    }
+
+    return STATUS_OBJECT_NAME_NOT_FOUND;
+}
+
+static
+NTSTATUS
 X509ValidityCheck(
     _In_ const CERT_VALUES* Cert,
     _In_ CERT_CHAIN_HIERARCHY Hierarchy,
-    _In_ const LARGE_INTEGER* SystemTime,
-    _In_ ULONG Flags
+    _In_ PCERT_VERIFICATION_CONTEXT Context
     )
 {
     NTSTATUS Status;
     LARGE_INTEGER TestTime;
     ULONG i;
+    PWIN_CERT_CHAIN_OPTIONS opt = &Context->ChainOptions[Hierarchy];
+
+    //
+    // Do we need to confirm the subject?
+    //
+    if (opt->Subject) {
+        Status = X520Check(&Cert->Values[Certificate_Subject].Raw,
+                           opt->Issuer,
+                           STATUS_SUBJECT_NOT_TRUSTED);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    //
+    // Do we need to confirm the issuer?
+    //
+    if (opt->Issuer) {
+        Status = X520Check(&Cert->Values[Certificate_Issuer].Raw,
+                           opt->Issuer,
+                           STATUS_CN_NO_MATCH);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
 
     //
     // Do we need to check the Validity field?
     //
-    if (!FlagOn(Flags, WCOF_NO_LIFETIME_CHECK(Hierarchy))) {
+    if (!FlagOn(opt->Flags, WCHF_NO_LIFETIME_CHECK)) {
         Status = X509DecodeTime(&TestTime,
                                 &Cert->Values[Certificate_NotBefore]);
         if (!NT_SUCCESS(Status))
             return Status;
 
-        if (SystemTime->QuadPart < TestTime.QuadPart)
+        if (opt->Time.QuadPart < TestTime.QuadPart)
             return STATUS_CERT_EXPIRED;
 
         Status = X509DecodeTime(&TestTime,
@@ -550,11 +647,14 @@ X509ValidityCheck(
         if (!NT_SUCCESS(Status))
             return Status;
 
-        if (SystemTime->QuadPart > TestTime.QuadPart)
+        if (opt->Time.QuadPart > TestTime.QuadPart)
             return STATUS_CERT_EXPIRED;
     }
 
-    if (!FlagOn(Flags, WCOF_NO_CRITICAL_EXT(Hierarchy))) {
+    //
+    // Do we need to check for unknown critical extensions?
+    //
+    if (!FlagOn(opt->Flags, WCHF_NO_CRITICAL_EXT_CHECK)) {
         CERT_EXTENSION ext = { 0 };
         while (NT_SUCCESS(Status = X509NextExtension(Cert, &ext))) {
             if (ext.Critical) {
@@ -569,6 +669,60 @@ X509ValidityCheck(
         }
     }
 
+    if (!FlagOn(opt->Flags, WCHF_NO_KEY_USAGE_CHECK)) {
+        KEY_USAGE_BITS KeyUsageBits;
+        BLOB OidList;
+
+        Status = X509ResolveKeyUsage(Cert, &KeyUsageBits, &OidList);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+#define ARE_ALL_SET(bitmap, flags) (((bitmap) & (flags)) == (flags))
+
+        if (!ARE_ALL_SET(KeyUsageBits.Combined, opt->KeyUsage.Combined))
+            return STATUS_CERT_PURPOSE;
+
+        for (i = 0; i < opt->ExtKeyUsageCount; i++) {
+            if (!X509InOidInList(&opt->ExtKeyUsageList[i], &OidList))
+                return STATUS_CERT_PURPOSE;
+        }
+
+        if (!FlagOn(opt->Flags, WCHF_NO_BASIC_CONSTRAINTS_CHECK)
+            &&
+            KeyUsageBits.KeyCertSign) {
+
+            CERT_EXTENSION ext;
+            ASN1_VALUE Values[2] = { 0 };
+            static const ASN1_VALUE_DECRIPTOR Description[] = {
+                // BasicConstraints ::= SEQUENCE {
+                0, 0, ASN1_TAG_SEQUENCE, -1,
+
+                // cA BOOLEAN DEFAULT FALSE,
+                1, ADF_OPTIONAL, ASN1_TAG_BOOLEAN, 0,
+
+                // pathLenConstraint       INTEGER (0..MAX) OPTIONAL
+                1, ADF_OPTIONAL, ASN1_TAG_INTEGER, 1,
+            };
+
+            Status = X509FindExtension(Cert, &OID_EXT_BASIC_CONST, &ext);
+            if (NT_SUCCESS(Status)) {
+                Status = Asn1Decode(&ext.Value,
+                                    Description,
+                                    RTL_NUMBER_OF(Description),
+                                    Values);
+                if (!NT_SUCCESS(Status))
+                    return Status;
+
+                if (Asn1ReadBoolean(&Values[0].Data)
+                    &&
+                    Asn1ReadInteger(&Values[1].Data) > Context->ChainLength) {
+
+                    return STATUS_CERT_CHAINING;
+                }
+            }
+        }
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -578,7 +732,8 @@ X509VerifyCertificate(
     _In_ const CERT_VALUES* Certificate,
     _In_opt_count_(Count) const CERT_VALUES* CertificateList,
     _In_ ULONG Count,
-    _In_opt_ const WIN_CERT_OPTIONS* Options
+    _In_opt_ const WIN_CERT_OPTIONS* Options,
+    _In_ const KEY_USAGE_BITS DefaultKeyUsage[]
     )
 {
     LPCWSTR AlgId;
@@ -588,35 +743,40 @@ X509VerifyCertificate(
     const CERT_VALUES* Issuer;
     ULONG Attempts = 0;
     CERT_VALUES Root;
-    ULONG Flags = 0;
-    LARGE_INTEGER SystemTime = { 0 };
+    CERT_VERIFICATION_CONTEXT Context = { 0 };
     CERT_EXTENSION AuthKeyId;
     PCERT_EXTENSION pAuthKeyId;
+    CERT_CHAIN_HIERARCHY Hierarchy = ChainIntermediate;
+    ULONG i;
+    LARGE_INTEGER Time;
 
     if (Options) {
-        Flags = Options->Flags;
+        Context.Flags = Options->Flags;
 
-        //
-        // Does the caller wish to use a specific time?
-        //
-        if (Options->Time) {
-            SystemTime = *Options->Time;
+        RtlCopyMemory(Context.ChainOptions,
+                      Options->ChainOptions,
+                      sizeof(Context.ChainOptions));
+    }
+
+    //
+    // Capture the clock so we'll use one common timestamp
+    //
+    WcQuerySystemTime(&Time);
+
+    //
+    // Check if we need to use the default
+    //
+    for (i = 0; i < ChainMax; i++) {
+        if (Context.ChainOptions[i].Time.QuadPart == 0) {
+            Context.ChainOptions[i].Time = Time;
         }
 
-        if (Options->Subject) {
-            Status = X520Check(&Subject->Values[Certificate_Subject].Raw,
-                               Options->Subject,
-                               STATUS_SUBJECT_NOT_TRUSTED);
-            if (!NT_SUCCESS(Status))
-                return Status;
+        if (Context.ChainOptions[i].KeyUsage.Combined == 0) {
+            Context.ChainOptions[i].KeyUsage = DefaultKeyUsage[i];
         }
     }
 
-    if (SystemTime.QuadPart == 0) {
-        WcQuerySystemTime(&SystemTime);
-    }
-
-    Status = X509ValidityCheck(Subject, CertChainEnd, &SystemTime, Flags);
+    Status = X509ValidityCheck(Subject, ChainEnd, &Context);
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -625,7 +785,7 @@ X509VerifyCertificate(
         if (!AlgId)
             return STATUS_NOT_SUPPORTED;
 
-        if (FlagOn(Flags, WCOF_DISABLE_MD2) && wcsicmp(AlgId, BCRYPT_MD2_ALGORITHM) == 0)
+        if (FlagOn(Context.Flags, WCOF_DISABLE_MD2) && wcsicmp(AlgId, BCRYPT_MD2_ALGORITHM) == 0)
             return STATUS_NOT_SUPPORTED;
 
         //
@@ -655,6 +815,7 @@ X509VerifyCertificate(
             }
 
             Issuer = &Root;
+            Hierarchy = ChainRoot;
         }
         else {
             //
@@ -667,6 +828,7 @@ X509VerifyCertificate(
                                   &Root);
             if (NT_SUCCESS(Status)) {
                 Issuer = &Root;
+                Hierarchy = ChainRoot;
             }
             else {
                 if (Status != STATUS_NO_MORE_ENTRIES)
@@ -688,10 +850,7 @@ X509VerifyCertificate(
             }
         }
 
-        Status = X509ValidityCheck(Issuer,
-                                   Issuer == &Root ? CertChainRoot : CertChainChain,
-                                   &SystemTime,
-                                   Flags);
+        Status = X509ValidityCheck(Issuer, Hierarchy, &Context);
         if (!NT_SUCCESS(Status))
             return Status;
 
@@ -709,20 +868,13 @@ X509VerifyCertificate(
 
         if (Issuer == &Root) {
             BlobFree(&Root.Raw);
-
-            if (NT_SUCCESS(Status) && Options && Options->Issuer) {
-                Status = X520Check(&Subject->Values[Certificate_Issuer].Raw,
-                                   Options->Issuer,
-                                   STATUS_CN_NO_MATCH);
-            }
-
             return Status;
         }
 
         if (!NT_SUCCESS(Status))
             return Status;
 
-        if (Attempts++ > CERT_CHAIN_MAX_ATTEMPTS)
+        if (Context.ChainLength++ > CERT_CHAIN_MAX_LENGTH)
             return STATUS_CERT_CHAINING;
 
         Subject = Issuer;
@@ -752,7 +904,7 @@ WcVerifyCertificate(
         if (!NT_SUCCESS(Status))
             return Status;
 
-        return X509VerifyCertificate(&Cert, NULL, 0, Options);
+        return X509VerifyCertificate(&Cert, NULL, 0, Options, GenericDefaultKeyUsage);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         return GetExceptionCode();

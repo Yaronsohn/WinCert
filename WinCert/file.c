@@ -163,7 +163,7 @@ _Must_inspect_result_
 NTSTATUS
 NTAPI
 WcVerifyData(
-    _In_ const VOID* Data,
+    _In_reads_(Size) const VOID* Data,
     _In_ SIZE_T Size,
     _In_ DWORD DataType,
     _Out_opt_ PULONG ReturnedDataType,
@@ -198,20 +198,19 @@ WcVerifyData(
         break;
 
     default:
-        DataTypePtr = &DataType;
-        Count = 1;
+        //
+        // Simply call the internal function directly
+        //
+        *ReturnedDataType = DataType;
+        return _WcVerifyData(Data, Size, DataType, Options);
     }
 
     for (i = 0; i < Count; i++) {
         Status = _WcVerifyData(Data, Size, *DataTypePtr, Options);
         *ReturnedDataType = *DataTypePtr;
 
-        if (Count == 1
-            ||
-            (Status != STATUS_BAD_DATA && Status != STATUS_INVALID_IMAGE_FORMAT)) {
-
+        if (Status != STATUS_BAD_DATA && Status != STATUS_INVALID_IMAGE_FORMAT)
             return Status;
-        }
 
         DataTypePtr++;
     }

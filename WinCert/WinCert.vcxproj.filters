@@ -56,6 +56,9 @@
     <ClInclude Include="..\wcstatus.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\wcoid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="wcstatus.mc">

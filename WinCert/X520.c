@@ -5,57 +5,9 @@
 #define INITBLOB
 
 #include "WinCerti.h"
+#include "../wcoid.h"
 
-// 2.5.4.3
-DEFINE_BLOB(OID_CommonName, 0x55, 0x04, 0x03)
-
-// 2.5.4.4
-DEFINE_BLOB(OID_Surname, 0x55, 0x04, 0x04)
-
-// 2.5.4.5
-DEFINE_BLOB(OID_SerialNumber, 0x55, 0x04, 0x05)
-
-// 2.5.4.6
-DEFINE_BLOB(OID_CountryName, 0x55, 0x04, 0x06)
-
-// 2.5.4.7
-DEFINE_BLOB(OID_LocalityName, 0x55, 0x04, 0x07)
-
-// 2.5.4.8
-DEFINE_BLOB(OID_ProvinceName, 0x55, 0x04, 0x08)
-
-// 2.5.4.9
-DEFINE_BLOB(OID_StreetAddress, 0x55, 0x04, 0x09)
-
-// 2.5.4.10
-DEFINE_BLOB(OID_OrganizationName, 0x55, 0x04, 0x0A)
-
-// 2.5.4.11
-DEFINE_BLOB(OID_OrganizationalUnitName, 0x55, 0x04, 0x0B)
-
-// 2.5.4.12
-DEFINE_BLOB(OID_Title, 0x55, 0x04, 0x0C)
-
-// 2.5.4.13
-DEFINE_BLOB(OID_Description, 0x55, 0x04, 0x0D)
-
-// 2.5.4.15
-DEFINE_BLOB(OID_BusinessCatagory, 0x55, 0x04, 0x0F)
-
-// 2.5.4.42
-DEFINE_BLOB(OID_GivenName, 0x55, 0x04, 0x2A)
-
-// 2.5.4.43
-DEFINE_BLOB(OID_Initials, 0x55, 0x04, 0x2B)
-
-// 2.5.4.44
-DEFINE_BLOB(OID_GenerationQualifier, 0x55, 0x04, 0x2C)
-
-// 2.5.4.49
-DEFINE_BLOB(OID_DistinguishedName, 0x55, 0x04, 0x31)
-
-// 2.5.4.65
-DEFINE_BLOB(OID_Pseudonym, 0x55, 0x04, 0x41)
+/* GLOBALS ********************************************************************/
 
 static const BLOB* const AttributeOIDs[] =
 {

@@ -89,16 +89,76 @@ IsEqualAsn1Value(
 #ifdef __cplusplus
 #define BlobSkipAsn1Value(blob, value) \
     BlobSkipBlob(blob, (value).Raw)
+
+FORCEINLINE
+ULONG64
+Asn1ReadInteger(
+    _In_ REFBLOB Value
+    )
+{
+    BLOB Data = Value;
+    ULONG64 v = 0;
+    while (Data.cbSize--) {
+        v = (v << 8) | *Data.pBlobData++;
+    }
+
+    return v;
+}
+
+FORCEINLINE
+BOOLEAN
+Asn1ReadBoolean(
+    _In_ REFBLOB Value
+    )
+{
+    BLOB Data = Value;
+    while (Data.cbSize--) {
+        if (*Data.pBlobData++)
+            return TRUE;
+    }
+
+    return FALSE;
+}
 #else
 #define BlobSkipAsn1Value(blob, value) \
     BlobSkipBlob(blob, &(value)->Raw)
+
+FORCEINLINE
+ULONG64
+Asn1ReadInteger(
+    _In_ REFBLOB Value
+    )
+{
+    BLOB Data = *((PBLOB)Value);
+    ULONG64 v = 0;
+    while (Data.cbSize--) {
+        v = (v << 8) | *Data.pBlobData++;
+    }
+
+    return v;
+}
+
+FORCEINLINE
+BOOLEAN
+Asn1ReadBoolean(
+    _In_ REFBLOB Value
+    )
+{
+    BLOB Data = *((PBLOB)Value);
+    while (Data.cbSize--) {
+        if (*Data.pBlobData++)
+            return TRUE;
+    }
+
+    return FALSE;
+}
 #endif
 
 _Must_inspect_result_
 NTSTATUS
 NTAPI
 WcVerifyData(
-    _In_ const VOID* Data,
+    _In_reads_(Size) const VOID* Data,
     _In_ SIZE_T Size,
     _In_ DWORD DataType,
     _Out_opt_ PULONG ReturnedDataType,

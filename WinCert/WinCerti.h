@@ -211,7 +211,8 @@ X509VerifyCertificate(
     _In_ const CERT_VALUES* Certificate,
     _In_opt_count_(Count) const CERT_VALUES* CertificateList,
     _In_ ULONG Count,
-    _In_opt_ const WIN_CERT_OPTIONS* Options
+    _In_opt_ const WIN_CERT_OPTIONS* Options,
+    _In_ const KEY_USAGE_BITS DefaultKeyUsage[]
     );
 
 _Must_inspect_result_
@@ -272,6 +273,12 @@ Base64Header(
     _In_ BOOLEAN Begin,
     _Out_opt_ PCHAR* Start
     );
+
+enum {
+    BasicConstraints_CA = 0,
+    BasicConstraints_PathLenConst,
+    BasicConstraints_Max
+};
 
 #ifdef __cplusplus
 }

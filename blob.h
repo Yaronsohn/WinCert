@@ -133,6 +133,14 @@ __inline int IsNilBlob(REFBLOB blob)
 }
 #endif
 
+#ifndef DECLSPEC_SELECTANY
+#if (_MSC_VER >= 1100)
+#define DECLSPEC_SELECTANY  __declspec(selectany)
+#else
+#define DECLSPEC_SELECTANY
+#endif
+#endif
+
 #ifndef EXTERN_C
 #ifdef __cplusplus
 #define EXTERN_C    extern "C"
@@ -143,8 +151,8 @@ __inline int IsNilBlob(REFBLOB blob)
 
 #ifdef INITBLOB
 #define DEFINE_BLOB(name, b, ...) \
-    static const BYTE name##_data[] = { b, __VA_ARGS__ }; \
-    EXTERN_C const BLOB name = { (ULONG)sizeof(name##_data), (PBYTE)name##_data };
+    EXTERN_C const BYTE DECLSPEC_SELECTANY name##_data[] = { b, __VA_ARGS__ }; \
+    EXTERN_C const BLOB DECLSPEC_SELECTANY name = { (ULONG)sizeof(name##_data), (PBYTE)name##_data };
 #else
 #define DEFINE_BLOB(name, b, ...) \
     EXTERN_C const BLOB name;

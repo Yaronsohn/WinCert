@@ -176,6 +176,7 @@
     <ClCompile Include="X520.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\wcoid.h" />
     <ClInclude Include="..\wcstatus.h" />
     <ClInclude Include="WinCerti.h" />
   </ItemGroup>

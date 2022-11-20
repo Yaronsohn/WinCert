@@ -126,59 +126,87 @@ typedef enum {
     X520_Max
 } X520_ATTR;
 
+typedef enum {
+    ChainEnd = 0,
+    ChainIntermediate,
+    ChainRoot,
+    ChainMax
+} CERT_CHAIN_HIERARCHY;
+
 typedef struct _WIN_CERT_X520 {
     ASN1_VALUE Attributes[X520_Max];
 } WIN_CERT_X520, * PWIN_CERT_X520;
 
-typedef union _WIN_CERT_KEY_USAGE {
-    ULONG KeyUsage;
-    struct {
-        ULONG Digital : 1;
-    } DUMMYUNIONANE;
-} WIN_CERT_KEY_USAGE;
+typedef union _KEY_USAGE_BITS {
 
-typedef enum {
-    CertChainEnd = 0,
-    CertChainChain,
-    CertChainRoot,
-    CertChainMax
-} CERT_CHAIN_HIERARCHY;
+#define KEY_USAGE_DIGITAL_SIGNATURE     (0x0080)
+#define KEY_USAGE_NON_REPUDIATION       (0x0040)
+#define KEY_USAGE_CONTENT_COMMITMENT    (0x0040)
+#define KEY_USAGE_KEY_ENCIPHERMENT      (0x0020)
+#define KEY_USAGE_DATA_ENCIPHERMENT     (0x0010)
+#define KEY_USAGE_KEY_AGREEMENT         (0x0008)
+#define KEY_USAGE_KEY_CERT_SIGN         (0x0004)
+#define KEY_USAGE_CRL_SIGN              (0x0002)
+#define KEY_USAGE_ENCIPHER_ONLY         (0x0001)
+#define KEY_USAGE_DECIPHER_ONLY         (0x8000)
+
+    WORD Combined;
+    struct {
+        WORD EncipherOnly : 1;
+        WORD CRLSign : 1;
+        WORD KeyCertSign : 1;
+        WORD KeyAgreement : 1;
+        WORD DataEncipherment : 1;
+        WORD KeyEncipherment : 1;
+        WORD ContentCommitment : 1;
+        WORD DigitalSignature : 1;
+        WORD ReservedUsage : 7;
+        WORD DecipherOnly : 1;
+    } DUMMYSTRUCTNAME;
+} KEY_USAGE_BITS, *PKEY_USAGE_BITS;
+
+typedef struct _WIN_CERT_CHAIN_OPTIONS_1 {
+    union {
+
+#define WCHF_NO_LIFETIME_CHECK          (0x00000001L)
+#define WCHF_NO_CRITICAL_EXT_CHECK      (0x00000002L)
+#define WCHF_NO_BASIC_CONSTRAINTS_CHECK (0x00000004L)
+#define WCHF_NO_KEY_USAGE_CHECK         (0x00000008L)
+
+        ULONG Flags;
+
+        struct {
+            ULONG NoLifetimeCheck : 1;
+            ULONG NoCriticalExtCheck : 1;
+            ULONG NoBasicConstraintsCheck : 1;
+            ULONG NoKeyUsageCheck : 1;
+            ULONG ReservedFlags : 28;
+        } DUMMYSTRUCTNAME;
+    } DUMMYUNIONNAME;
+    const WIN_CERT_X520* Issuer;
+    const WIN_CERT_X520* Subject;
+    LARGE_INTEGER Time;
+    KEY_USAGE_BITS KeyUsage;
+    ULONG ExtKeyUsageCount;
+    PBLOB ExtKeyUsageList;
+} WIN_CERT_CHAIN_OPTIONS_1, *PWIN_CERT_CHAIN_OPTIONS_1;
+typedef WIN_CERT_CHAIN_OPTIONS_1 WIN_CERT_CHAIN_OPTIONS;
+typedef WIN_CERT_CHAIN_OPTIONS* PWIN_CERT_CHAIN_OPTIONS;
 
 typedef struct _WIN_CERT_OPTIONS_1 {
     DWORD Size;
     union {
 
-#define WCOF_NO_LIFETIME_CHECK_END          (0x00000001L)
-#define WCOF_NO_LIFETIME_CHECK_CHAIN        (0x00000002L)
-#define WCOF_NO_LIFETIME_CHECK_ROOT         (0x00000004L)
-#define WCOF_NO_LIFETIME_CHECK(hierarchy)   (WCOF_NO_LIFETIME_CHECK_END << (hierarchy))
-#define WCOF_NO_LIFETIME_CHECK_ALL          (0x00000007L)
-
-#define WCOF_DISABLE_MD2                    (0x00000008L)
-
-#define WCOF_NO_CRITICAL_EXT_CHECK_END      (0x00000010L)
-#define WCOF_NO_CRITICAL_EXT_CHECK_CHAIN    (0x00000020L)
-#define WCOF_NO_CRITICAL_EXT_CHECK_ROOT     (0x00000040L)
-#define WCOF_NO_CRITICAL_EXT(hierarchy)     (WCOF_NO_CRITICAL_EXT_CHECK_END << (hierarchy))
-#define WCOF_NO_CRITICAL_EXT_ALL            (0x00000070L)
+#define WCOF_DISABLE_MD2                (0x00000001L)
 
         ULONG Flags;
 
         struct {
-            ULONG NoLifetimeCheckEnd : 1;
-            ULONG NoLifetimeCheckChain : 1;
-            ULONG NoLifetimeCheckRoot : 1;
             ULONG DisableMD2 : 1;
-            ULONG NoCriticalExtCheckEnd : 1;
-            ULONG NoCriticalExtCheckChain : 1;
-            ULONG NoCriticalExtCheckRoot : 1;
-            ULONG ReservedFlags : 25;
+            ULONG ReservedFlags : 31;
         } DUMMYSTRUCTNAME;
     } DUMMYUNIONNAME;
-    const WIN_CERT_X520* Issuer;    // of the Root certificate
-    const WIN_CERT_X520* Subject;   // of the End certificate
-    const LARGE_INTEGER* Time;      // lifetime check against this time
-    WIN_CERT_KEY_USAGE KeyUsage[CertChainMax];
+    WIN_CERT_CHAIN_OPTIONS_1 ChainOptions[ChainMax];
 } WIN_CERT_OPTIONS_1, * PWIN_CERT_OPTIONS_1;
 
 typedef WIN_CERT_OPTIONS_1 WIN_CERT_OPTIONS;
