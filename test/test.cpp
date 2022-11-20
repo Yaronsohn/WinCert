@@ -3,11 +3,14 @@
 #include <Windows.h>
 #include <winternl.h>
 #include "../WinCert.h"
-#include <ntstatus.h>
 
 #pragma comment(lib, "WinCertU")
 #pragma comment(lib, "ntdll")
 #pragma comment(lib, "bcrypt")
+
+#ifndef STATUS_UNSUCCESSFUL
+#define STATUS_UNSUCCESSFUL              ((NTSTATUS)0xC0000001L)
+#endif
 
 int main()
 {
