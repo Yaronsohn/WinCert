@@ -25,6 +25,8 @@ Revision:
 extern "C" {
 #endif
 
+extern const LARGE_INTEGER WcHalfSecond;
+
 _Must_inspect_result_
 NTSTATUS
 NTAPI

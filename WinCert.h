@@ -41,8 +41,6 @@ Description:
 extern "C" {
 #endif
 
-extern const LARGE_INTEGER WcHalfSecond;
-
 __drv_allocatesMem(Mem)
 _Post_writable_byte_size_(Bytes)
 _Must_inspect_result_
