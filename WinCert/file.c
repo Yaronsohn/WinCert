@@ -251,5 +251,5 @@ Return Value:
             return Status;
     }
 
-    return Status;
+    return STATUS_UNSUCCESSFUL;
 }

@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <winternl.h>
 #include "../WinCert.h"
+#include <ntstatus.h>
 
 #pragma comment(lib, "WinCertU")
 #pragma comment(lib, "ntdll")
@@ -18,8 +19,13 @@ int main()
     IO_STATUS_BLOCK IoStatusBlock;
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING NameString;
-    static const BYTE CommonName[] = { 'A','d','o','b','e',' ','I','n','c','.' };
 
+    //
+    // Open the test DLL.
+    //
+    // N.B. There is nothing special about the handle. You can use the Win32
+    // CreateFile function if you are more familiar with it.
+    //
     RtlInitUnicodeString(&NameString, L"\\SystemRoot\\system32\\ntdll.dll");
     InitializeObjectAttributes(&ObjectAttributes,
                                &NameString,
@@ -32,16 +38,35 @@ int main()
                         &IoStatusBlock,
                         FILE_SHARE_READ | FILE_SHARE_DELETE,
                         FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    if (NT_SUCCESS(Status)) {
 
-    //
-    // Initialize the size field
-    //
-    options.Size = sizeof(options);
+        //
+        // Initialize the size field.
+        //
+        // N.B. For now, we don't realy use the options variable so we can simply
+        // pass a NULL value. It is here for visibility.
+        //
+        options.Size = sizeof(options);
 
-    Status = WcVerifyFileByHandle(FileHandle, 0, &DataType, &options);
+        //
+        // N.B. While we do know that file is of type DATA_TYPE_IMAGE, we pass
+        // DATA_TYPE_ANY to challenge the function.
+        //
+        Status = WcVerifyFileByHandle(FileHandle,
+                                      DATA_TYPE_ANY,
+                                      &DataType,
+                                      &options);
+        if (Status != STATUS_UNSUCCESSFUL) {
 
-    CloseHandle(FileHandle);
+            //
+            // N.B. In most cases, the function might be able to identify the
+            // type of the data even if the veritifcation fails.
+            //
+            if (DataType != DATA_TYPE_IMAGE) {
+                Status = STATUS_UNSUCCESSFUL;
+            }
+        }
+        NtClose(FileHandle);
+    }
     return Status;
 }
