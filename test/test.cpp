@@ -52,7 +52,7 @@ int main()
         options.Size = sizeof(options);
 
         //
-        // N.B. While we do know that file is of type DATA_TYPE_IMAGE, we pass
+        // While we do know that file is of type DATA_TYPE_IMAGE, we pass
         // DATA_TYPE_ANY to challenge the function.
         //
         Status = WcVerifyFileByHandle(FileHandle,
@@ -62,7 +62,7 @@ int main()
         if (Status != STATUS_UNSUCCESSFUL) {
 
             //
-            // N.B. In most cases, the function might be able to identify the
+            // In most cases, the function might be able to identify the
             // type of the data even if the veritifcation fails.
             //
             if (DataType != DATA_TYPE_IMAGE) {
