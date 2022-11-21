@@ -268,6 +268,7 @@ static
 NTSTATUS
 X509FindRoot(
     _In_opt_ const UNICODE_STRING* Store,
+    _In_ ULONG StoreCount,
     _In_ REFBLOB Comparator,
     _In_ CERTIFICATE_VALUE CertValue,
     _In_opt_ const CERT_EXTENSION* AuthKeyId,
@@ -309,7 +310,16 @@ X509FindRoot(
             return Status;
     }
 
-    NextStore = Store ? Store : Roots;
+    if (Store == NULL) {
+        StoreCount = 0;
+    }
+
+    if (!StoreCount) {
+        Store = Roots;
+        StoreCount = RTL_NUMBER_OF(Roots);
+    }
+
+    NextStore = Store;
 
     do {
         Status = StoreOpen(&StoreHandle,
@@ -339,6 +349,7 @@ X509FindRoot(
                         RtlZeroMemory(Certificate, sizeof(*Certificate));
                         Status = X509ParseCertificate(&Blob, Certificate);
                         if (NT_SUCCESS(Status)) {
+
                             //
                             // Did the caller specify an Authorization Key Id?
                             //
@@ -359,8 +370,8 @@ X509FindRoot(
                                         &&
                                         IsEqualBLOB(&keyIdentifier.Data, &SubjectKeyId.Data)) {
 
-                                       // Status = STATUS_SUCCESS;
-                                       // goto FreeBasicInfo;
+                                        Status = STATUS_SUCCESS;
+                                        goto FreeBasicInfo;
                                     }
                                 }
                             }
@@ -411,20 +422,7 @@ FreeBasicInfo:  if (BasicInfo) {
 
             StoreClose(StoreHandle);
         }
-
-        //
-        // Did we find a match?
-        //
-        if (NT_SUCCESS(Status))
-            break;
-
-        //
-        // Did the caller ask for an explicit store?
-        //
-        if (Store)
-            break;
-
-    } while (++NextStore < &Roots[RTL_NUMBER_OF(Roots)]);
+    } while (!NT_SUCCESS(Status) && ++NextStore < &Store[StoreCount]);
 
     if (!IsNilBlob(&SavedCertificate.Raw)) {
         ASSERT(AuthKeyId);
@@ -749,6 +747,8 @@ X509VerifyCertificate(
     CERT_CHAIN_HIERARCHY Hierarchy = ChainIntermediate;
     ULONG i;
     LARGE_INTEGER Time;
+    const UNICODE_STRING* Stores = NULL;
+    ULONG StoreCount = 0;
 
     if (Options) {
         if (Options->Size != sizeof(WIN_CERT_OPTIONS_1))
@@ -759,6 +759,9 @@ X509VerifyCertificate(
         RtlCopyMemory(Context.ChainOptions,
                       Options->ChainOptions,
                       sizeof(Context.ChainOptions));
+
+        Stores = Options->Stores;
+        StoreCount = Options->StoreCount;
     }
 
     //
@@ -805,7 +808,8 @@ X509VerifyCertificate(
             // Because we've reached the end of the chain, check if this certificate
             // is a trusted root.
             //
-            Status = X509FindRoot(NULL,
+            Status = X509FindRoot(Stores,
+                                  StoreCount,
                                   &Subject->Values[Certificate_SubjectPublicKeyInfo].Data,
                                   Certificate_SubjectPublicKeyInfo,
                                   pAuthKeyId,
@@ -824,7 +828,8 @@ X509VerifyCertificate(
             //
             // Check if the certificate is a trusted root
             //
-            Status = X509FindRoot(NULL,
+            Status = X509FindRoot(Stores,
+                                  StoreCount,
                                   &Subject->Values[Certificate_Issuer].Data,
                                   Certificate_Issuer,
                                   pAuthKeyId,
@@ -839,7 +844,7 @@ X509VerifyCertificate(
 
                 //
                 // Find the issuer certificate
-                //
+                // 
                 Issuer = X509FindCertificateBySubject(&Subject->Values[Certificate_Issuer].Data,
                                                       CertificateList,
                                                       Count);

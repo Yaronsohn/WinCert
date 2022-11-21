@@ -207,6 +207,8 @@ typedef struct _WIN_CERT_OPTIONS_1 {
         } DUMMYSTRUCTNAME;
     } DUMMYUNIONNAME;
     WIN_CERT_CHAIN_OPTIONS_1 ChainOptions[ChainMax];
+    const UNICODE_STRING* Stores;
+    ULONG StoreCount;
 } WIN_CERT_OPTIONS_1, * PWIN_CERT_OPTIONS_1;
 
 typedef WIN_CERT_OPTIONS_1 WIN_CERT_OPTIONS;
