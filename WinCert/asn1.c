@@ -182,7 +182,7 @@ Return Value:
             if (Descriptors[NextDesc].Tag) {
                 while (Descriptors[NextDesc].Tag != value.Tag) {
                     if (!Descriptors[NextDesc].Optional)
-                        return STATUS_ASN1_DECODING_ERROR;
+                        return STATUS_CERT_MALFORMED;
 
                     do {
                         if (++NextDesc >= DescriptorCount)
@@ -201,7 +201,7 @@ Return Value:
                 NextDesc++;
                 if (Descriptors[NextDesc].Level > StackPtr) {
                     if (TAG_TO_FORM(value.Tag) != ASN1_DER_FORM_CONSTRUCTED)
-                        return STATUS_ASN1_DECODING_ERROR;
+                        return STATUS_CERT_MALFORMED;
 
                     if (++StackPtr >= DESCEND_STACK_LENGTH)
                         return STATUS_ASN1_DECODING_ERROR;

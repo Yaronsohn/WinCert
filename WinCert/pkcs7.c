@@ -175,7 +175,7 @@ Pkcs7ParseSignerInfoAttributes(
         return Status;
 
     if (Root.Tag != DEFTAG(ASN1_DER_FORM_CONSTRUCTED, ASN1_DER_CLASS_CONTEXT_DEFINED, 0))
-        return STATUS_INVALID_SIGNATURE;
+        return STATUS_CERT_MALFORMED;
 
     LocalData = Root.Data;
 
