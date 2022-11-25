@@ -3,10 +3,10 @@ WinCert is a package for verifying certificates and digital signatures for Micro
 
 ## Features
 - Applicable for both _User-mode_ and _Kernel-mode_ code.
-- Doesn't require any third party libraries (except for wah comes with the OS).
+- Doesn't require any third party libraries (except for what comes with the OS).
 - Provides the caller great deal of control over the certificate verification process:
   - You can control which kind of test the library performs on certificates in the chain.
-  - You can enforce certain requirements from the certificates like who the Issuer or the Subject is, the time limitations and more.
+  - You can enforce certain requirements from the certificates like who must be the Issuer or the who the Subject is, the time limitations and more.
   - You can limit the accepted cryptographic algorithms.
 -Requires Windows Vista and above.
 - The whole certificate chain is verified up to the root which is verified against the OS's root certificate database.
@@ -22,8 +22,8 @@ The package includes three libraries:
 - WinCertK: This is the *Kernel mode* wrapper that provides the user implementations of various needed services by the WinCert library. Use this library when creating a kernel mode driver.
 
 ## Usage
-In order to us the library you need to call one of the functions below.
-The library provides more functions for a more specific need (and if you know what you're doing...).
+In order to use the library you need to call one of the functions below.
+The library provides more functions for a more specific need.
 
 WinCert.h (user mode and kernel mode):
 ```c
