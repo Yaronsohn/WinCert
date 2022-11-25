@@ -194,6 +194,12 @@ WcVerifyCertificate(
 //
 // Certificate Store
 //
+typedef enum _STORE_CATAGORY {
+    CertificateCatagry = 0,
+    CRLCatagory,
+    MaxCatagory
+} STORE_CATAGORY;
+
 #if defined(_NTDEF_) || defined(_WINTERNL_) 
 _Must_inspect_result_
 NTSTATUS
@@ -201,7 +207,8 @@ NTAPI
 StoreOpen(
     _Out_ PHANDLE StoreHandle,
     _In_ ACCESS_MASK DesiredAccess,
-    _In_opt_ const UNICODE_STRING* Store
+    _In_opt_ const UNICODE_STRING* Store,
+    _In_ STORE_CATAGORY Catagory
     );
 #endif // defined(_NTDEF_) || defined(_WINTERNL_) 
 
@@ -224,7 +231,33 @@ StoreOpenCertificateByName(
     _In_ HANDLE StoreHandle,
     _In_ const UNICODE_STRING* Name
     );
-#endif // defined(_NTDEF_) || defined(_WINTERNL_) 
+#endif // defined(_NTDEF_) || defined(_WINTERNL_)
+
+#if defined(_NTDEF_) || defined(_WINTERNL_)
+typedef
+BOOLEAN
+(NTAPI* PSTORE_ENUM_ROUTINE)(
+    _In_ HANDLE StoreHandle,
+    _In_ const VOID* Information,
+    _In_ ULONG Length,
+    _In_opt_ PVOID Context,
+    _Out_ PNTSTATUS ReturnStatus
+    );
+#endif // defined(_NTDEF_) || defined(_WINTERNL_)
+
+#if defined(_WDMDDK_)
+_Must_inspect_result_
+NTSTATUS
+NTAPI
+StoreEnum(
+    _In_opt_ const UNICODE_STRING* Store,
+    _In_ ULONG StoreCount,
+    _In_ KEY_INFORMATION_CLASS KeyInformationClass,
+    _In_ PSTORE_ENUM_ROUTINE EnumRoutine,
+    _In_opt_ PVOID Context,
+    _In_ STORE_CATAGORY Catagory
+    );
+#endif // _WDMDDK_
 
 #ifdef __cplusplus
 }

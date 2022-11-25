@@ -9,8 +9,12 @@
 const UNICODE_STRING RootStore = RTL_CONSTANT_STRING(L"ROOT");
 static const UNICODE_STRING CertificatesPath =
     RTL_CONSTANT_STRING(L"\\REGISTRY\\MACHINE\\SOFTWARE\\Microsoft\\SystemCertificates\\");
-static const UNICODE_STRING CertificatesSubKey = RTL_CONSTANT_STRING(L"\\Certificates");
 static const UNICODE_STRING BlobValueName = RTL_CONSTANT_STRING(L"Blob");
+
+static const UNICODE_STRING StoreCatagories[] = {
+    RTL_CONSTANT_STRING(L"\\Certificates"),
+    RTL_CONSTANT_STRING(L"\\CRLs")
+};
 
 /* FUNCTIONS ******************************************************************/
 
@@ -39,6 +43,8 @@ typedef struct _FILE_ELEMENT_HDR {
 #define UNICODE_STRING_MAX_BYTES ((WORD)65534) 
 #endif
 
+#define STORE_MEM_TAG        'rotS'
+
 static
 NTSTATUS
 StoreAllocateUnicodeString(
@@ -63,28 +69,35 @@ NTAPI
 StoreOpen(
     _Out_ PHANDLE StoreHandle,
     _In_ ACCESS_MASK DesiredAccess,
-    _In_opt_ const UNICODE_STRING* Store
+    _In_opt_ const UNICODE_STRING* Store,
+    _In_ STORE_CATAGORY Catagory
     )
 {
     UNICODE_STRING ObjectName;
     OBJECT_ATTRIBUTES ObjectAttributes;
     NTSTATUS Status;
+    const UNICODE_STRING* CatagoryName;
 
     if (!Store) {
         Store = &RootStore;
     }
 
+    if (Catagory < 0 || Catagory >= MaxCatagory)
+        return STATUS_INVALID_PARAMETER_4;
+
+    CatagoryName = &StoreCatagories[Catagory];
+
     Status = StoreAllocateUnicodeString(&ObjectName,
                                         CertificatesPath.Length +
                                         Store->Length +
-                                        CertificatesSubKey.Length +
+                                        CatagoryName->Length +
                                         sizeof(UNICODE_NULL));
     if (!NT_SUCCESS(Status))
         return Status;
 
     RtlCopyUnicodeString(&ObjectName, &CertificatesPath);
     RtlAppendUnicodeStringToString(&ObjectName, Store);
-    RtlAppendUnicodeStringToString(&ObjectName, &CertificatesSubKey);
+    RtlAppendUnicodeStringToString(&ObjectName, CatagoryName);
 
     InitializeObjectAttributes(&ObjectAttributes,
                                &ObjectName,
@@ -215,4 +228,88 @@ StoreOpenCertificateByName(
 Leave:
     WcFreeMemory(ValueInfo, CERT_ALLOC_TAG);
     return Status;
+}
+
+_Must_inspect_result_
+NTSTATUS
+NTAPI
+StoreEnum(
+    _In_opt_ const UNICODE_STRING* Store,
+    _In_ ULONG StoreCount,
+    _In_ KEY_INFORMATION_CLASS KeyInformationClass,
+    _In_ PSTORE_ENUM_ROUTINE EnumRoutine,
+    _In_opt_ PVOID Context,
+    _In_ STORE_CATAGORY Catagory
+    )
+{
+    NTSTATUS Status;
+    ULONG Index;
+    PVOID Info;
+    ULONG Length;
+    ULONG ResultLength;
+    HANDLE StoreHandle;
+    PCUNICODE_STRING NextStore;
+    BOOLEAN Continue = TRUE;
+    static const UNICODE_STRING Roots[] = {
+        RTL_CONSTANT_STRING(L"ROOT"),
+        RTL_CONSTANT_STRING(L"AuthRoot"),
+        RTL_CONSTANT_STRING(L"CA"),
+    };
+
+    if (Store == NULL) {
+        StoreCount = 0;
+    }
+
+    if (!StoreCount) {
+        Store = Roots;
+        StoreCount = RTL_NUMBER_OF(Roots);
+    }
+
+    NextStore = Store;
+
+    do {
+        Status = StoreOpen(&StoreHandle,
+                           KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS,
+                           NextStore,
+                           Catagory);
+        if (NT_SUCCESS(Status)) {
+            Index = 0;
+            Length = 0;
+            Info = NULL;
+            for (;;) {
+                Status = ZwEnumerateKey(StoreHandle,
+                                        Index,
+                                        KeyInformationClass,
+                                        Info,
+                                        Length,
+                                        &ResultLength);
+                if (NT_SUCCESS(Status)) {
+                    Continue = EnumRoutine(StoreHandle, Info, Length, Context, &Status);
+                    if (Continue) {
+                        Index++;
+                        continue;
+                    }
+                }
+
+                if (Info) {
+                    WcFreeMemory(Info, STORE_MEM_TAG);
+                }
+
+                if (!Continue || (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL))
+                    break;
+
+                Info = WcAllocateMemory(ResultLength, STORE_MEM_TAG);
+                if (!Info) {
+                    Status = STATUS_INSUFFICIENT_RESOURCES;
+                    break;
+                }
+
+                Length = ResultLength;
+            }
+
+            StoreClose(StoreHandle);
+        }
+    } while (!NT_SUCCESS(Status) && ++NextStore < &Store[StoreCount]);
+
+    return Continue ? STATUS_NO_MORE_ENTRIES : Status;
 }

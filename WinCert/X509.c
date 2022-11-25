@@ -50,8 +50,6 @@ static const KEY_USAGE_BITS GenericDefaultKeyUsage[ChainMax] = {
 
 /* FUNCTIONS ******************************************************************/
 
-#define CERT_MEM_TAG        'treC'
-
 #ifdef CERT_CHAIN_MAX_LENGTH
 #if CERT_CHAIN_MAX_LENGTH >= MAXWORD
 #error ERROR! CERT_CHAIN_MAX_LENGTH Must must be less than MAXWORD.
@@ -136,6 +134,7 @@ X509ParseCertificate(
             1, 0, ASN1_TAG_BITSTRING, Certificate_Signature
     };
 
+    RtlZeroMemory(CertValues->Values, sizeof(CertValues->Values));
     CertValues->Raw = *Data;
     return Asn1Decode(Data,
                       CertificateDescription,
@@ -175,7 +174,7 @@ X509NextExtension(
         return Status;
 
     if (Value.Tag != ASN1_TAG_SEQUENCE)
-        return STATUS_ASN1_DECODING_ERROR;
+        return STATUS_CERT_MALFORMED;
 
     Ext->Raw = Value.Raw;
 
@@ -185,7 +184,7 @@ X509NextExtension(
         return Status;
 
     if (Value.Tag != ASN1_TAG_OID)
-        return STATUS_ASN1_DECODING_ERROR;
+        return STATUS_CERT_MALFORMED;
 
     Ext->Id = Value.Data;
 
@@ -206,7 +205,7 @@ X509NextExtension(
         return Status;
 
     if (Value.Tag != ASN1_TAG_OCTETSTRING)
-        return STATUS_ASN1_DECODING_ERROR;
+        return STATUS_CERT_MALFORMED;
 
     Ext->Value = Value.Data;
     return STATUS_SUCCESS;
@@ -264,6 +263,93 @@ X509IsSelfSignedCertificate(
     IsEqualBLOB(&Certificate->Values[Certificate_Subject].Data, \
         &Certificate->Values[Certificate_Issuer].Data)
 
+typedef struct {
+    REFBLOB Comparator;
+    CERTIFICATE_VALUE CertValue;
+    ASN1_VALUE KeyIdentifier;
+    PCERT_VALUES Certificate;
+    CERT_VALUES SavedCertificate;
+} FIND_ROOT_ENUM_CONTEXT;
+
+static
+BOOLEAN
+NTAPI
+X509FindRootEnumRoutine(
+    _In_ HANDLE StoreHandle,
+    _In_ const VOID* Information,
+    _In_ ULONG Length,
+    _In_opt_ FIND_ROOT_ENUM_CONTEXT* Context,
+    _Out_ PNTSTATUS ReturnStatus
+    )
+{
+    PKEY_BASIC_INFORMATION BasicInfo = (PKEY_BASIC_INFORMATION)Information;
+    PCERT_VALUES Certificate = Context->Certificate;
+    UNICODE_STRING Name;
+    BLOB CertBlob;
+    CERT_EXTENSION Ext;
+    ASN1_VALUE SubjectKeyId;
+    NTSTATUS Status;
+
+    Name.MaximumLength = Name.Length = (USHORT)BasicInfo->NameLength;
+    Name.Buffer = BasicInfo->Name;
+
+    //
+    // N.B. We do not fail the whole process if we failed
+    // to process one certificate
+    //
+    Status = StoreOpenCertificateByName(&CertBlob, StoreHandle, &Name);
+    if (!NT_SUCCESS(Status))
+        return TRUE;
+
+    Status = X509ParseCertificate(&CertBlob, Certificate);
+    if (NT_SUCCESS(Status)) {
+
+        //
+        // Did the caller specify an Authorization Key Id?
+        //
+        if (!IsNilBlob(&Context->KeyIdentifier.Data)) {
+
+            //
+            // Yup, we have an Auth Key Id - this suppose to match
+            // the certificate's Subject Key Id
+            //
+            Status = X509FindExtension(Certificate,
+                                       &OID_EXT_SUBJECT_KEY_ID,
+                                       &Ext);
+            if (NT_SUCCESS(Status)) {
+                Status = Asn1DecodeValue(&Ext.Value, &SubjectKeyId);
+                if (NT_SUCCESS(Status)
+                    &&
+                    SubjectKeyId.Tag == ASN1_TAG_OCTETSTRING
+                    &&
+                    IsEqualBLOB(&Context->KeyIdentifier.Data, &SubjectKeyId.Data)) {
+
+                    *ReturnStatus = STATUS_SUCCESS;
+                    return FALSE;
+                }
+            }
+        }
+
+        //
+        // Check only if we didn't find one already
+        //
+        if (IsNilBlob(&Context->SavedCertificate.Raw)) {
+            if (IsEqualBLOB(Context->Comparator, &Certificate->Values[Context->CertValue].Data)) {
+
+                //
+                // Save the matched certificate and try to find a better match.
+                // (e.g. with the Auth Key Id.)
+                //
+                Context->SavedCertificate = *Certificate;
+                return TRUE;
+            }
+        }
+    }
+
+    BlobFree(&CertBlob);
+    return TRUE;
+}
+
 static
 NTSTATUS
 X509FindRoot(
@@ -276,23 +362,7 @@ X509FindRoot(
     )
 {
     NTSTATUS Status;
-    ULONG Index;
-    PKEY_BASIC_INFORMATION BasicInfo;
-    ULONG Length;
-    ULONG ResultLength;
-    UNICODE_STRING Name;
-    BLOB Blob;
-    HANDLE StoreHandle;
-    PCUNICODE_STRING NextStore;
-    CERT_EXTENSION Ext;
-    ASN1_VALUE keyIdentifier = { 0 };
-    ASN1_VALUE SubjectKeyId;
-    CERT_VALUES SavedCertificate = { 0 };
-    static const UNICODE_STRING Roots[] = {
-        RTL_CONSTANT_STRING(L"ROOT"),
-        RTL_CONSTANT_STRING(L"AuthRoot"),
-        RTL_CONSTANT_STRING(L"CA"),
-    };
+    FIND_ROOT_ENUM_CONTEXT Context = { 0 };
     static const ASN1_VALUE_DECRIPTOR Description[] = {
         // AuthorityKeyIdentifier :: = SEQUENCE {
         0, 0, ASN1_TAG_SEQUENCE, -1,
@@ -305,139 +375,38 @@ X509FindRoot(
         Status = Asn1Decode(&AuthKeyId->Value,
                             Description,
                             RTL_NUMBER_OF(Description),
-                            &keyIdentifier);
+                            &Context.KeyIdentifier);
         if (!NT_SUCCESS(Status))
             return Status;
     }
 
-    if (Store == NULL) {
-        StoreCount = 0;
-    }
+    Context.Comparator = Comparator;
+    Context.CertValue = CertValue;
+    Context.Certificate = Certificate;
 
-    if (!StoreCount) {
-        Store = Roots;
-        StoreCount = RTL_NUMBER_OF(Roots);
-    }
+    Status = StoreEnum(Store,
+                       StoreCount,
+                       KeyBasicInformation,
+                       X509FindRootEnumRoutine,
+                       &Context,
+                       CertificateCatagry);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    NextStore = Store;
-
-    do {
-        Status = StoreOpen(&StoreHandle,
-                           KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS,
-                           NextStore);
-        if (NT_SUCCESS(Status)) {
-            Index = 0;
-            Length = 0;
-            BasicInfo = NULL;
-            for (;;) {
-                Status = ZwEnumerateKey(StoreHandle,
-                                        Index,
-                                        KeyBasicInformation,
-                                        BasicInfo,
-                                        Length,
-                                        &ResultLength);
-                if (NT_SUCCESS(Status)) {
-                    Name.MaximumLength = Name.Length = (USHORT)BasicInfo->NameLength;
-                    Name.Buffer = BasicInfo->Name;
-
-                    //
-                    // N.B. We do not fail the whole process if we failed
-                    // to process one certificate
-                    //
-                    Status = StoreOpenCertificateByName(&Blob, StoreHandle, &Name);
-                    if (NT_SUCCESS(Status)) {
-                        RtlZeroMemory(Certificate, sizeof(*Certificate));
-                        Status = X509ParseCertificate(&Blob, Certificate);
-                        if (NT_SUCCESS(Status)) {
-
-                            //
-                            // Did the caller specify an Authorization Key Id?
-                            //
-                            if (AuthKeyId) {
-
-                                //
-                                // Yup, we have an Auth Key Id - this suppose to match
-                                // the certificate's Subject Key Id
-                                //
-                                Status = X509FindExtension(Certificate,
-                                                           &OID_EXT_SUBJECT_KEY_ID,
-                                                           &Ext);
-                                if (NT_SUCCESS(Status)) {
-                                    Status = Asn1DecodeValue(&Ext.Value, &SubjectKeyId);
-                                    if (NT_SUCCESS(Status)
-                                        &&
-                                        SubjectKeyId.Tag == ASN1_TAG_OCTETSTRING
-                                        &&
-                                        IsEqualBLOB(&keyIdentifier.Data, &SubjectKeyId.Data)) {
-
-                                        Status = STATUS_SUCCESS;
-                                        goto FreeBasicInfo;
-                                    }
-                                }
-                            }
-
-                            if (!AuthKeyId || IsNilBlob(&SavedCertificate.Raw)) {
-                                if (IsEqualBLOB(Comparator, &Certificate->Values[CertValue].Data)) {
-
-                                    if (AuthKeyId) {
-                                        ASSERT(IsNilBlob(&SavedCertificate.Raw));
-
-                                        //
-                                        // Save the matched certificate and try to find a better match.
-                                        // (e.g. with the Auth Key Id.)
-                                        //
-                                        SavedCertificate = *Certificate;
-                                        RtlZeroMemory(&Blob, sizeof(BLOB));
-                                    }
-                                    else {
-                                        Status = STATUS_SUCCESS;
-                                        goto FreeBasicInfo;
-                                    }
-                                }
-                            }
-                        }
-
-                        BlobFree(&Blob);
-                    }
-
-                    Index++;
-                    continue;
-                }
-
-FreeBasicInfo:  if (BasicInfo) {
-                    WcFreeMemory(BasicInfo, CERT_MEM_TAG);
-                }
-
-                if (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL)
-                    break;
-
-                BasicInfo = WcAllocateMemory(ResultLength, CERT_MEM_TAG);
-                if (!BasicInfo) {
-                    Status = STATUS_INSUFFICIENT_RESOURCES;
-                    break;
-                }
-
-                Length = ResultLength;
-            }
-
-            StoreClose(StoreHandle);
-        }
-    } while (!NT_SUCCESS(Status) && ++NextStore < &Store[StoreCount]);
-
-    if (!IsNilBlob(&SavedCertificate.Raw)) {
+    if (!IsNilBlob(&Context.SavedCertificate.Raw)) {
         ASSERT(AuthKeyId);
 
         //
         // Did we actually find a match for the Auth Key Id?
         //
-        if (IsNilBlob(&Blob)) {
+        if (IsNilBlob(&Context.Certificate->Raw)) {
             ASSERT(!NT_SUCCESS(Status));
-            *Certificate = SavedCertificate;
+            *Certificate = Context.SavedCertificate;
             Status = STATUS_SUCCESS;
         }
         else {
             ASSERT(NT_SUCCESS(Status));
-            BlobFree(&SavedCertificate.Raw);
+            BlobFree(&Context.SavedCertificate.Raw);
         }
     }
 
@@ -582,7 +551,7 @@ X509InOidInList(
             return Status;
 
         if (Value.Tag != ASN1_TAG_OID)
-            return STATUS_ASN1_DECODING_ERROR;
+            return STATUS_CERT_MALFORMED;
 
         if (IsEqualBLOB(Oid, &Value.Data))
             return STATUS_SUCCESS;
