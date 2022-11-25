@@ -47,6 +47,9 @@ Return Value:
     HANDLE SectionHandle;
     PVOID BaseAddress;
     SIZE_T ViewSize;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    KAPC_STATE ApcState;
+    BOOLEAN Attached;
 
     Status = ZwQueryInformationFile(FileHandle,
                                     &IoStatusBlock,
@@ -56,15 +59,25 @@ Return Value:
     if (NT_ERROR(Status))
         return Status;
 
+    InitializeObjectAttributes(&ObjectAttributes,
+                               NULL,
+                               OBJ_KERNEL_HANDLE,
+                               0,
+                               NULL);
     Status = ZwCreateSection(&SectionHandle,
                              SECTION_MAP_READ,
-                             NULL,
+                             &ObjectAttributes,
                              NULL,
                              PAGE_READONLY,
                              SEC_COMMIT,
                              FileHandle);
     if (!NT_SUCCESS(Status))
         return Status;
+
+    //
+    // This is only meaningfull in kernel mode
+    //
+    Attached = WcAttachToSystem(&ApcState);
 
     BaseAddress = NULL;
     ViewSize = 0;
@@ -78,21 +91,25 @@ Return Value:
                                 ViewUnmap,
                                 0,
                                 PAGE_READONLY);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    if (NT_SUCCESS(Status)) {
+        if (FileStdInfo.EndOfFile.QuadPart > (LONGLONG)ViewSize) {
+            Status = STATUS_INVALID_BLOCK_LENGTH;
+        }
+        else {
+            Status = WcVerifyData(BaseAddress,
+                                  (SIZE_T)FileStdInfo.EndOfFile.QuadPart,
+                                  DataType,
+                                  ReturnedDataType,
+                                  Options);
+        }
 
-    if (FileStdInfo.EndOfFile.QuadPart > (LONGLONG)ViewSize) {
-        Status = STATUS_INVALID_BLOCK_LENGTH;
-    }
-    else {
-        Status = WcVerifyData(BaseAddress,
-                              (SIZE_T)FileStdInfo.EndOfFile.QuadPart,
-                              DataType,
-                              ReturnedDataType,
-                              Options);
+        ZwUnmapViewOfSection(ZwCurrentProcess(), BaseAddress);
     }
 
-    ZwUnmapViewOfSection(ZwCurrentProcess(), BaseAddress);
+    if (Attached) {
+        WcDetachFromSystem(&ApcState);
+    }
+
     ZwClose(SectionHandle);
     return Status;
 }
@@ -247,8 +264,15 @@ Return Value:
         Status = _WcVerifyData(Data, Size, *DataTypePtr, Options);
         *ReturnedDataType = *DataTypePtr++;
 
-        if (Status != STATUS_BAD_DATA && Status != STATUS_INVALID_IMAGE_FORMAT)
+        switch (Status) {
+        case STATUS_CERT_MALFORMED:
+        case STATUS_BAD_DATA:
+        case STATUS_INVALID_IMAGE_FORMAT:
+            break;
+
+        default:
             return Status;
+        }
     }
 
     return STATUS_UNSUCCESSFUL;

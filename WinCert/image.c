@@ -7,6 +7,25 @@
 
 /* FUNCTIONS ******************************************************************/
 
+NTSYSAPI
+_Must_inspect_result_
+PIMAGE_NT_HEADERS
+NTAPI
+RtlImageNtHeader(
+    _In_ PVOID Base
+    );
+
+NTSYSAPI
+_Must_inspect_result_
+PVOID
+NTAPI
+RtlImageDirectoryEntryToData(
+    _In_ PVOID Base,
+    _In_ BOOLEAN MappedAsImage,
+    _In_ USHORT DirectoryEntry,
+    _Out_ PULONG Size
+    );
+
 static
 _Must_inspect_result_
 NTSTATUS

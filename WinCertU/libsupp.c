@@ -73,3 +73,20 @@ WcQuerySystemTime(
 {
     GetSystemTimeAsFileTime((LPFILETIME)SystemTime);
 }
+
+BOOLEAN
+NTAPI
+WcAttachToSystem(
+    _Inout_ struct KAPC_STATE* ApcState
+    )
+{
+    return FALSE;
+}
+
+VOID
+NTAPI
+WcDetachFromSystem(
+    _Inout_ struct KAPC_STATE* ApcState
+    )
+{
+}

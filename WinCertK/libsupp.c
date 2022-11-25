@@ -45,3 +45,25 @@ WcQuerySystemTime(
 {
     KeQuerySystemTime(&SystemTime);
 }
+
+BOOLEAN
+NTAPI
+WcAttachToSystem(
+    _Inout_ KAPC_STATE* ApcState
+    )
+{
+    if (PsGetCurrentProcess() == PsInitialSystemProcess)
+        return FALSE;
+
+    KeStackAttachProcess(PsInitialSystemProcess, ApcState);
+    return TRUE;
+}
+
+VOID
+NTAPI
+WcDetachFromSystem(
+    _Inout_ KAPC_STATE* ApcState
+    )
+{
+    KeUnstackDetachProcess(ApcState);
+}

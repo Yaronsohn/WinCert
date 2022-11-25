@@ -73,29 +73,22 @@ extern "C" {
 #define LDR_DATAFILE_TO_VIEW(x) ((PVOID)(((ULONG_PTR)(x)) & ~(ULONG_PTR)1))
 #endif
 
-NTSYSAPI
-_Must_inspect_result_
-PIMAGE_NT_HEADERS
-NTAPI
-RtlImageNtHeader(
-    _In_ PVOID Base
-    );
-
-NTSYSAPI
-_Must_inspect_result_
-PVOID
-NTAPI
-RtlImageDirectoryEntryToData(
-    _In_ PVOID Base,
-    _In_ BOOLEAN MappedAsImage,
-    _In_ USHORT DirectoryEntry,
-    _Out_ PULONG Size
-    );
-
 VOID
 NTAPI
 WcQuerySystemTime(
     _Out_ PLARGE_INTEGER SystemTime
+    );
+
+BOOLEAN
+NTAPI
+WcAttachToSystem(
+    _Inout_ KAPC_STATE* ApcState
+    );
+
+VOID
+NTAPI
+WcDetachFromSystem(
+    _Inout_ KAPC_STATE* ApcState
     );
 
 _Must_inspect_result_
