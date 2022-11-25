@@ -45,26 +45,6 @@ Revision:
 extern "C" {
 #endif
 
-    //////////////////////////
-#include <stdio.h>
-
-    __forceinline void printblob(REFBLOB blob) {
-        int len = 0;
-        char* ch = "0123456789ABCDEF";
-        for (unsigned int i = 0; i < blob->cbSize; i++) {
-            putchar(ch[(blob->pBlobData[i] >> 4) & 0xF]);
-            putchar(ch[blob->pBlobData[i] & 0xF]);
-            if (++len >= 16) {
-                putchar('\n');
-                len = 0;
-            }
-        }
-
-        putchar('\n');
-        putchar('\n');
-    }
-    /////////////////////////////
-
 #ifndef LDR_IS_DATAFILE
 #define LDR_IS_DATAFILE(x)      (((ULONG_PTR)(x)) &  (ULONG_PTR)1)
 #endif
