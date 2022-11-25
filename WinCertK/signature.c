@@ -26,7 +26,7 @@ MmCreateSection(
     _In_opt_ PFILE_OBJECT FileObject
     );
 
-#pragma alloc_text(PAGED, WcVerifyFileSignatureByFileObject)
+#pragma alloc_text(PAGED, WcVerifyFileByFileObject)
 
 _Must_inspect_result_
 NTSTATUS
