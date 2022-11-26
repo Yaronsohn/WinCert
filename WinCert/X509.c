@@ -580,7 +580,7 @@ X509ValidityCheck(
     //
     if (opt->Subject) {
         Status = X520Check(&Cert->Values[Certificate_Subject].Raw,
-                           opt->Issuer,
+                           opt->Subject,
                            STATUS_SUBJECT_NOT_TRUSTED);
         if (!NT_SUCCESS(Status))
             return Status;
