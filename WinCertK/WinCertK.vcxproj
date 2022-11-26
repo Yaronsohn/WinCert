@@ -154,7 +154,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="libsupp.c" />
-    <ClCompile Include="signature.c" />
+    <ClCompile Include="file.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Condition="Exists('$(SolutionDir)config\PostProject.targets')" Project="$(SolutionDir)config\PostProject.targets" />

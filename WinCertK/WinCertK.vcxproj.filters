@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="signature.c">
+    <ClCompile Include="file.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="libsupp.c">
