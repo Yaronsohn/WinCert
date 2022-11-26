@@ -760,7 +760,7 @@ X509VerifyCertificate(
         if (!AlgId)
             return STATUS_NOT_SUPPORTED;
 
-        if (FlagOn(Context.Flags, WCOF_DISABLE_MD2) && wcsicmp(AlgId, BCRYPT_MD2_ALGORITHM) == 0)
+        if (FlagOn(Context.Flags, WCOF_DISABLE_MD2) && _wcsicmp(AlgId, BCRYPT_MD2_ALGORITHM) == 0)
             return STATUS_NOT_SUPPORTED;
 
         //
