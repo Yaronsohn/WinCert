@@ -71,7 +71,8 @@ Return Value:
     PVOID ImageBase;
     SIZE_T ViewSize;
     ULONG RetryCount;
-
+    LARGE_INTEGER MaximumSize;
+    
     PAGED_CODE();
 
     Status = IoQueryFileInformation(FileObject,
@@ -84,10 +85,11 @@ Return Value:
 
     RetryCount = 0;
     for (;;) {
+        MaximumSize.QuadPart = 0;
         Status = MmCreateSection(&SectionObject,
                                  SECTION_MAP_READ,
                                  NULL,
-                                 NULL,
+                                 &MaximumSize,
                                  PAGE_READONLY,
                                  SEC_COMMIT,
                                  NULL,
