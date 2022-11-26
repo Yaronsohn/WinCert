@@ -26,6 +26,30 @@ MmCreateSection(
     _In_opt_ PFILE_OBJECT FileObject
     );
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+MmMapViewOfSection(
+    _In_ PVOID SectionToMap,
+    _In_ PEPROCESS Process,
+    _Inout_ PVOID* CapturedBase,
+    _In_ ULONG_PTR ZeroBits,
+    _In_ SIZE_T CommitSize,
+    _Inout_ PLARGE_INTEGER SectionOffset,
+    _Inout_ PSIZE_T CapturedViewSize,
+    _In_ SECTION_INHERIT InheritDisposition,
+    _In_ ULONG AllocationType,
+    _In_ ULONG Protect
+    );
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+MmUnmapViewOfSection(
+    _In_ PEPROCESS Process,
+    _In_ PVOID BaseAddress
+    );
+
 #pragma alloc_text(PAGED, WcVerifyFileByFileObject)
 
 _Must_inspect_result_
@@ -111,9 +135,17 @@ Return Value:
     }
 
     ViewSize = 0;
-    Status = MmMapViewInSystemSpace(SectionObject,
-                                    &ImageBase,
-                                    &ViewSize);
+    ImageBase = NULL;
+    Status = MmMapViewOfSection(SectionObject,
+                                PsInitialSystemProcess,
+                                &ImageBase,
+                                0,
+                                0,
+                                NULL,
+                                &ViewSize,
+                                ViewUnmap,
+                                0,
+                                PAGE_READONLY);
     if (NT_SUCCESS(Status)) {
         if (FileStdInfo.EndOfFile.QuadPart > (LONGLONG)ViewSize) {
             Status = STATUS_INVALID_BLOCK_LENGTH;
@@ -135,7 +167,7 @@ Return Value:
             }
         }
 
-        MmUnmapViewInSystemSpace(ImageBase);
+        MmUnmapViewOfSection(PsInitialSystemProcess, ImageBase);
     }
 
     ObDereferenceObject(SectionObject);
