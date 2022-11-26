@@ -67,6 +67,6 @@ The package requires that the DDK or the WDK be installed on your computer. You 
 include and lib directories according to where you installed the DDK/WDK.
 
 ## Linking
-You will need to link with BCRYPT.LIB when building you project.
+You will need to link with BCRYPT.LIB when building you project for user mode and cng.lib when building for kernel mode.
 
 If you build a user mode executable/DLL, you will also need NTDLL.LIB (available in the DDK/WDK).
