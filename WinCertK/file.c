@@ -96,6 +96,7 @@ Return Value:
     SIZE_T ViewSize;
     ULONG RetryCount;
     LARGE_INTEGER MaximumSize;
+    LARGE_INTEGER Offset;
     
     PAGED_CODE();
 
@@ -109,7 +110,7 @@ Return Value:
 
     RetryCount = 0;
     for (;;) {
-        MaximumSize.QuadPart = 0;
+        MaximumSize = FileStdInfo.EndOfFile;
         Status = MmCreateSection(&SectionObject,
                                  SECTION_MAP_READ,
                                  NULL,
@@ -136,12 +137,13 @@ Return Value:
 
     ViewSize = 0;
     ImageBase = NULL;
+    Offset.QuadPart = 0;
     Status = MmMapViewOfSection(SectionObject,
                                 PsInitialSystemProcess,
                                 &ImageBase,
                                 0,
                                 0,
-                                NULL,
+                                &Offset,
                                 &ViewSize,
                                 ViewUnmap,
                                 0,
