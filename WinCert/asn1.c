@@ -42,25 +42,38 @@ Return Value:
     BYTE* Ptr = Data->pBlobData;
     ULONG Length = Data->cbSize;
 
-    if (Length < 2)
-        return STATUS_ASN1_DECODING_ERROR;
+    if (!Length)
+        return STATUS_NO_MORE_ENTRIES;
+
+    RtlZeroMemory(Value, sizeof(Value));
 
     //
-    // Save the raw pointer
+    // Save the raw information
     //
     Value->Raw.pBlobData = Ptr;
-
-    //
-    // For now, assume that the whole length is the Tag and Length fields and
-    // deduct it from the length we have left.
-    //
-    Value->Raw.cbSize = 2;
-    Length -= 2;
+    Value->Raw.cbSize = 1;
 
     //
     // Get the Tag
     //
     Value->Tag = *Ptr++;
+    Length--;
+
+    //
+    // In some cases, one or more nil octets are appended to various reasons
+    // (like alignment).
+    // For robustness, we support single nil octets - that is, nil tag with no
+    // length field.
+    //
+    if (!Length)
+        return Value->Tag == ASN1_TAG_RESERVED0 ? STATUS_SUCCESS : STATUS_ASN1_DECODING_ERROR;
+
+    //
+    // For now, assume that the whole length is the Tag and Length fields and
+    // deduct it from the length we have left.
+    //
+    Value->Raw.cbSize++;
+    Length--;
 
     //
     // Get the length field
