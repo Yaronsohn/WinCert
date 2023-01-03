@@ -296,6 +296,9 @@ Return Value:
         if (!NT_SUCCESS(Status))
             return Status;
 
+        //
+        // Get the security directory.
+        //
         CertTable = RtlImageDirectoryEntryToData((PVOID)ImageBase,
                                                  TRUE,
                                                  IMAGE_DIRECTORY_ENTRY_SECURITY,
@@ -305,9 +308,17 @@ Return Value:
             __leave;
         }
 
+        //
+        // N.B. ImgBuildHashBlobArray has already checked the bounds of the security
+        // directory.
+        //
+
         Cert = (LPWIN_CERTIFICATE)CertTable;
         CertEnd = (LPWIN_CERTIFICATE)RtlOffsetToPointer(CertTable, CertTableSize);
         while (Cert < CertEnd) {
+            if (((ULONG_PTR)Cert + Cert->dwLength) > ((ULONG_PTR)ImageBase + ImageSize))
+                break;
+
             if (Cert->wRevision == WIN_CERT_REVISION_2_0
                 &&
                 Cert->wCertificateType == WIN_CERT_TYPE_PKCS_SIGNED_DATA
