@@ -336,6 +336,11 @@ X509FindRootEnumRoutine(
         if (IsNilBlob(&Context->SavedCertificate.Raw)) {
             if (IsEqualBLOB(Context->Comparator, &Certificate->Values[Context->CertValue].Data)) {
 
+                if (IsNilBlob(&Context->KeyIdentifier.Data)) {
+                    *ReturnStatus = STATUS_SUCCESS;
+                    return FALSE;
+                }
+
                 //
                 // Save the matched certificate and try to find a better match.
                 // (e.g. with the Auth Key Id.)
@@ -390,26 +395,21 @@ X509FindRoot(
                        X509FindRootEnumRoutine,
                        &Context,
                        CertificateCatagry);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    if (!IsNilBlob(&Context.SavedCertificate.Raw)) {
-        ASSERT(AuthKeyId);
-
-        //
-        // Did we actually find a match for the Auth Key Id?
-        //
-        if (IsNilBlob(&Context.Certificate->Raw)) {
-            ASSERT(!NT_SUCCESS(Status));
-            *Certificate = Context.SavedCertificate;
-            Status = STATUS_SUCCESS;
-        }
-        else {
-            ASSERT(NT_SUCCESS(Status));
+    if (Status != STATUS_NO_MORE_ENTRIES) {
+        if (!IsNilBlob(&Context.SavedCertificate.Raw)) {
             BlobFree(&Context.SavedCertificate.Raw);
         }
+
+        return Status;
     }
 
+    //
+    // Did we find one not by the Auth Key Id?
+    //
+    if (IsNilBlob(&Context.SavedCertificate.Raw))
+        return STATUS_NO_MORE_ENTRIES;
+
+    *Certificate = Context.SavedCertificate;
     return Status;
 }
 
