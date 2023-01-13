@@ -64,6 +64,7 @@ typedef struct _CERT_VERIFICATION_CONTEXT {
     ULONG Flags;
     WIN_CERT_CHAIN_OPTIONS ChainOptions[ChainMax];
 } CERT_VERIFICATION_CONTEXT, *PCERT_VERIFICATION_CONTEXT;
+C_ASSERT(sizeof(CERT_VERIFICATION_CONTEXT) < 0x100);
 
 _Must_inspect_result_
 NTSTATUS
@@ -710,7 +711,7 @@ X509VerifyCertificate(
     const CERT_VALUES* Issuer;
     ULONG Attempts = 0;
     CERT_VALUES Root;
-    CERT_VERIFICATION_CONTEXT Context = { 0 };
+    PCERT_VERIFICATION_CONTEXT Context;
     CERT_EXTENSION AuthKeyId;
     PCERT_EXTENSION pAuthKeyId;
     CERT_CHAIN_HIERARCHY Hierarchy = ChainIntermediate;
@@ -719,15 +720,23 @@ X509VerifyCertificate(
     const UNICODE_STRING* Stores = NULL;
     ULONG StoreCount = 0;
 
+    Context = WcAllocateMemory(sizeof(CERT_VERIFICATION_CONTEXT), 'txtC');
+    if (!Context)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlZeroMemory(Context, sizeof(CERT_VERIFICATION_CONTEXT));
+
     if (Options) {
-        if (Options->Size != sizeof(WIN_CERT_OPTIONS_1))
-            return STATUS_INVALID_PARAMETER;
+        if (Options->Size != sizeof(WIN_CERT_OPTIONS_1)) {
+            Status = STATUS_INVALID_PARAMETER;
+            goto FreeContextAndLeave;
+        }
 
-        Context.Flags = Options->Flags;
+        Context->Flags = Options->Flags;
 
-        RtlCopyMemory(Context.ChainOptions,
+        RtlCopyMemory(Context->ChainOptions,
                       Options->ChainOptions,
-                      sizeof(Context.ChainOptions));
+                      sizeof(Context->ChainOptions));
 
         Stores = Options->Stores;
         StoreCount = Options->StoreCount;
@@ -742,33 +751,37 @@ X509VerifyCertificate(
     // Check if we need to use the default
     //
     for (i = 0; i < ChainMax; i++) {
-        if (Context.ChainOptions[i].Time.QuadPart == 0) {
-            Context.ChainOptions[i].Time = Time;
+        if (Context->ChainOptions[i].Time.QuadPart == 0) {
+            Context->ChainOptions[i].Time = Time;
         }
 
-        if (Context.ChainOptions[i].KeyUsage.Combined == 0) {
-            Context.ChainOptions[i].KeyUsage = DefaultKeyUsage[i];
+        if (Context->ChainOptions[i].KeyUsage.Combined == 0) {
+            Context->ChainOptions[i].KeyUsage = DefaultKeyUsage[i];
         }
     }
 
-    Status = X509ValidityCheck(Subject, ChainEnd, &Context);
+    Status = X509ValidityCheck(Subject, ChainEnd, Context);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto FreeContextAndLeave;
 
     for (;;) {
         AlgId = HashDecodeAlgorithmIdentifier(&Subject->Values[Certificate_SignatureAlgorithm].Data);
-        if (!AlgId)
-            return STATUS_NOT_SUPPORTED;
+        if (!AlgId) {
+            Status = STATUS_NOT_SUPPORTED;
+            goto FreeContextAndLeave;
+        }
 
-        if (FlagOn(Context.Flags, WCOF_DISABLE_MD2) && _wcsicmp(AlgId, BCRYPT_MD2_ALGORITHM) == 0)
-            return STATUS_NOT_SUPPORTED;
+        if (FlagOn(Context->Flags, WCOF_DISABLE_MD2) && _wcsicmp(AlgId, BCRYPT_MD2_ALGORITHM) == 0) {
+            Status = STATUS_NOT_SUPPORTED;
+            goto FreeContextAndLeave;
+        }
 
         //
         // Check for the Authority Key Identifier extension
         //
         Status = X509FindExtension(Subject, &OID_EXT_AUTH_KEY_ID, &AuthKeyId);
         if (NT_ERROR(Status))
-            return Status;
+            goto FreeContextAndLeave;
 
         pAuthKeyId = NT_SUCCESS(Status) ? &AuthKeyId : NULL;
 
@@ -784,10 +797,11 @@ X509VerifyCertificate(
                                   pAuthKeyId,
                                   &Root);
             if (!NT_SUCCESS(Status)) {
-                if (Status == STATUS_NO_MORE_ENTRIES)
-                    return STATUS_UNTRUSTED_ROOT;
+                if (Status == STATUS_NO_MORE_ENTRIES) {
+                    Status = STATUS_UNTRUSTED_ROOT;
+                }
 
-                return Status;
+                goto FreeContextAndLeave;
             }
 
             Issuer = &Root;
@@ -809,7 +823,7 @@ X509VerifyCertificate(
             }
             else {
                 if (Status != STATUS_NO_MORE_ENTRIES)
-                    return Status;
+                    goto FreeContextAndLeave;
 
                 //
                 // Find the issuer certificate
@@ -818,18 +832,17 @@ X509VerifyCertificate(
                                                       CertificateList,
                                                       Count);
                 if (!Issuer) {
-
-
                     // TODO: check for Authority Information Access
                     // and fetch info from the issuing authority - which means through the network...
-                    return STATUS_CERT_CHAINING;
+                    Status = STATUS_CERT_CHAINING;
+                    goto FreeContextAndLeave;
                 }
             }
         }
 
-        Status = X509ValidityCheck(Issuer, Hierarchy, &Context);
+        Status = X509ValidityCheck(Issuer, Hierarchy, Context);
         if (!NT_SUCCESS(Status))
-            return Status;
+            goto FreeContextAndLeave;
 
         Status = HashData(AlgId,
                           1,
@@ -845,19 +858,25 @@ X509VerifyCertificate(
 
         if (Issuer == &Root) {
             BlobFree(&Root.Raw);
-            return Status;
+            goto FreeContextAndLeave;
         }
 
         if (!NT_SUCCESS(Status))
-            return Status;
+            goto FreeContextAndLeave;
 
-        if (Context.ChainLength++ > CERT_CHAIN_MAX_LENGTH)
-            return STATUS_CERT_CHAINING;
+        if (Context->ChainLength++ > CERT_CHAIN_MAX_LENGTH) {
+            Status = STATUS_CERT_CHAINING;
+            goto FreeContextAndLeave;
+        }
 
         Subject = Issuer;
 
         ASSERT(Subject != &Root);
     }
+
+FreeContextAndLeave:
+    WcFreeMemory(Context, 'txtC');
+    return Status;
 }
 
 _Must_inspect_result_

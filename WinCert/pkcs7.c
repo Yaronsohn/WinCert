@@ -17,6 +17,8 @@ static const KEY_USAGE_BITS PKCS7KeyUsage[ChainMax] = {
 
 /* FUNCTIONS ******************************************************************/
 
+#define CERTS_SIZE (sizeof(CERT_VALUES) * WINCERT_MAX_CERTIFICATE_PER_IMAGE)
+
 static
 NTSTATUS
 Pkcs7ParseIndirectData(
@@ -344,7 +346,7 @@ Pkcs7VerifySignedData(
                     3, ADF_OPTIONAL, SignedData_SignerInfo_UnauthAttr,
     };
     NTSTATUS Status;
-    CERT_VALUES Certificates[16] = { 0 };
+    PCERT_VALUES Certificates = NULL;
     ULONG CertCount;
     BLOB Hash;
     const CERT_VALUES *Cert;
@@ -370,12 +372,18 @@ Pkcs7VerifySignedData(
     if (Values[SignedData_ContentType].Data.cbSize == 0 ||  Values[SignedData_Content].Data.cbSize == 0)
         return STATUS_INVALID_SIGNATURE;
 
-    CertCount = RTL_NUMBER_OF(Certificates);
+    Certificates = WcAllocateMemory(CERTS_SIZE, 'treC');
+    if (!Certificates)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlZeroMemory(Certificates, CERTS_SIZE);
+
+    CertCount = WINCERT_MAX_CERTIFICATE_PER_IMAGE;
     Status = Pkcs7ParseSignedDataCertificates(&Values[SignedData_Certificates].Data,
                                               Certificates,
                                               &CertCount);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto FreeCertsAndLeave;
 
     //
     // Find the certificate that was used for signing
@@ -384,15 +392,17 @@ Pkcs7VerifySignedData(
                                                       &Values[SignedData_SignerInfo_SerialNumber].Data,
                                                       Certificates,
                                                       CertCount);
-    if (!Cert)
-        return STATUS_INVALID_SIGNATURE;
+    if (!Cert) {
+        Status = STATUS_INVALID_SIGNATURE;
+        goto FreeCertsAndLeave;
+    }
 
     //
     // Verify the certificate
     //
     Status = X509VerifyCertificate(Cert, Certificates, CertCount, Options, PKCS7KeyUsage);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto FreeCertsAndLeave;
 
     //
     // We need to confirm that the following two match
@@ -400,34 +410,39 @@ Pkcs7VerifySignedData(
     if (!IsEqualBLOB(&Values[SignedData_SignerInfo_DigestAlgId].Data,
                      &Values[SignedData_DigestAlgorithmIdentifier].Data)) {
 
-        return STATUS_INVALID_SIGNATURE;
+        Status = STATUS_INVALID_SIGNATURE;
+        goto FreeCertsAndLeave;
     }
 
     AlgId = HashDecodeAlgorithmIdentifier(&Values[SignedData_SignerInfo_DigestAlgId].Data);
-    if (AlgId == NULL)
-        return STATUS_NOT_SUPPORTED;
+    if (AlgId == NULL) {
+        Status = STATUS_NOT_SUPPORTED;
+        goto FreeCertsAndLeave;
+    }
 
     Status = HashData(AlgId,
                       1,
                       &Values[SignedData_Content].Data,
                       &Hash);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    if (Values[SignedData_SignerInfo_AuthAttr].Data.cbSize) {
-        Status = Pkcs7VerifyAuthenticatedAttributes(AlgId,
-                                                    &Values[SignedData_SignerInfo_AuthAttr].Raw,
-                                                    &Hash);
-    }
-
     if (NT_SUCCESS(Status)) {
-        Status = HashVerifySignedHash(AlgId,
-                                      &Hash,
-                                      &Values[SignedData_SignerInfo_EncrDigest].Data,
-                                      &Cert->Values[Certificate_SubjectPublicKeyInfo].Raw);
+        if (Values[SignedData_SignerInfo_AuthAttr].Data.cbSize) {
+            Status = Pkcs7VerifyAuthenticatedAttributes(AlgId,
+                                                        &Values[SignedData_SignerInfo_AuthAttr].Raw,
+                                                        &Hash);
+        }
+
+        if (NT_SUCCESS(Status)) {
+            Status = HashVerifySignedHash(AlgId,
+                                          &Hash,
+                                          &Values[SignedData_SignerInfo_EncrDigest].Data,
+                                          &Cert->Values[Certificate_SubjectPublicKeyInfo].Raw);
+        }
+
+        BlobFree(&Hash);
     }
 
-    BlobFree(&Hash);
+FreeCertsAndLeave:
+    WcFreeMemory(Certificates, 'treC');
     return Status;
 }
 
@@ -452,12 +467,21 @@ Pkcs7Verify(
     };
 
     NTSTATUS Status;
-    ASN1_VALUE Values[Pkcs7_Max] = { 0 };
-    ASN1_VALUE SignedData[SignedData_Max];
-    ASN1_VALUE IndirectData[IndirectData_Max];
+    PASN1_VALUE Values;// [Pkcs7_Max] = { 0 };
+    PASN1_VALUE SignedData;// [SignedData_Max] ;
+    PASN1_VALUE IndirectData;// [IndirectData_Max] ;
     LPCWSTR AlgId;
     BLOB Hash;
-    BOOLEAN Equal;
+
+    //
+    // Allocate all the values as one block.
+    //
+    Values = WcAllocateMemory(sizeof(ASN1_VALUE) * (Pkcs7_Max + SignedData_Max + IndirectData_Max), 'ulaV');
+    if (!Values)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    SignedData = &Values[Pkcs7_Max];
+    IndirectData = &SignedData[SignedData_Max];
 
     //
     // Parse the authenticode block
@@ -467,43 +491,53 @@ Pkcs7Verify(
                         RTL_NUMBER_OF(Pkcs7Description),
                         Values);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto FreeValuesAndLeave;
 
     //
     // Make sure we're dealing with ASN.1 PKCS #7
     //
-    if (!IsEqualBLOB(&OID_RSA_PKCS7, &Values[Pkcs7_OID].Data))
-        return STATUS_INVALID_SIGNATURE;
+    if (!IsEqualBLOB(&OID_RSA_PKCS7, &Values[Pkcs7_OID].Data)) {
+        Status = STATUS_INVALID_SIGNATURE;
+        goto FreeValuesAndLeave;
+    }
 
     Status = Pkcs7VerifySignedData(&Values[Pkcs7_SignedData].Data, SignedData, Options);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto FreeValuesAndLeave;
 
-    if (!IsEqualBLOB(&SPC_INDIRECT_DATA_OBJID, &SignedData[SignedData_ContentType].Data))
-        return STATUS_INVALID_SIGNATURE;
+    if (!IsEqualBLOB(&SPC_INDIRECT_DATA_OBJID, &SignedData[SignedData_ContentType].Data)) {
+        Status = STATUS_INVALID_SIGNATURE;
+        goto FreeValuesAndLeave;
+    }
 
     Status = Pkcs7ParseIndirectData(&SignedData[SignedData_Content].Raw,
                                     IndirectData);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto FreeValuesAndLeave;
 
     if (!IsEqualBLOB(&SignedData[SignedData_DigestAlgorithmIdentifier].Data,
                      &IndirectData[IndirectData_Algorithm].Data)) {
 
-        return STATUS_INVALID_SIGNATURE;
+        Status = STATUS_INVALID_SIGNATURE;
+        goto FreeValuesAndLeave;
     }
 
     AlgId = HashDecodeAlgorithmIdentifier(&IndirectData[IndirectData_Algorithm].Data);
-    if (!AlgId)
-        return STATUS_NOT_SUPPORTED;
+    if (!AlgId) {
+        Status = STATUS_NOT_SUPPORTED;
+        goto FreeValuesAndLeave;
+    }
 
     Status = HashData(AlgId, Count, DataToHash, &Hash);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    if (NT_SUCCESS(Status)) {
+        Status = IsEqualBLOB(&Hash, &IndirectData[IndirectData_Digest].Data) ?
+            STATUS_SUCCESS: STATUS_INVALID_SIGNATURE;
 
-    Equal = IsEqualBLOB(&Hash, &IndirectData[IndirectData_Digest].Data);
-    BlobFree(&Hash);
+        BlobFree(&Hash);
+    }
 
-    return Equal ? STATUS_SUCCESS : STATUS_INVALID_SIGNATURE;
+FreeValuesAndLeave:
+    WcFreeMemory(Values, 'ulaV');
+    return Status;
 }
 

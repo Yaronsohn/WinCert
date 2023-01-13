@@ -45,6 +45,10 @@ Revision:
 extern "C" {
 #endif
 
+#ifndef WINCERT_MAX_CERTIFICATE_PER_IMAGE
+#define WINCERT_MAX_CERTIFICATE_PER_IMAGE 16
+#endif
+
 #ifndef LDR_IS_DATAFILE
 #define LDR_IS_DATAFILE(x)      (((ULONG_PTR)(x)) &  (ULONG_PTR)1)
 #endif
