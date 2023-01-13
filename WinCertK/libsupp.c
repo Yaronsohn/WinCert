@@ -43,7 +43,7 @@ WcQuerySystemTime(
     _Out_ PLARGE_INTEGER SystemTime
     )
 {
-    KeQuerySystemTime(&SystemTime);
+    KeQuerySystemTime(SystemTime);
 }
 
 BOOLEAN
