@@ -5,8 +5,8 @@ WinCert is a package for verifying certificates and digital signatures for Micro
 - Applicable for both _User-mode_ and _Kernel-mode_ code.
 - Doesn't require any third party libraries (except for what comes with the OS).
 - Provides the caller great deal of control over the certificate verification process:
-  - You can control which kind of test the library performs on certificates in the chain.
-  - You can enforce certain requirements from the certificates like who must be the Issuer or the who the Subject is, the time limitations and more.
+  - You can control which kind of tests the library performs on certificates in the chain.
+  - You can enforce certain requirements from the certificates like who must be the Issuer or who the Subject is, the time limitations and more.
   - You can limit the accepted cryptographic algorithms.
 -Requires Windows Vista and above.
 - The whole certificate chain is verified up to the root which is verified against the OS's root certificate database.
