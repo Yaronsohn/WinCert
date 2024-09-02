@@ -12,7 +12,7 @@ WinCert is a package for verifying certificates and digital signatures for Micro
 - The whole certificate chain is verified up to the root which is verified against the OS's root certificate database.
 
 ## Limitations
-- The library does **not** performs a check again the revocation lists.
+- The library does **not** performs a check against the revocation lists.
 - The library does **not** go out to the network to fetch any additional data.
 
 ## Structure
