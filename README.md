@@ -18,8 +18,8 @@ WinCert is a package for verifying certificates and digital signatures for Micro
 ## Structure
 The package includes three libraries:
 - WinCert: This is a mode-agnostic library that is shared between user mode and kernel mode - you should not use this library directly.
-- WinCertU: This is the *User mode* wrapper that provides the needed services needed by the WinCert library. Use this library when creating a user mode application and/or library.
-- WinCertK: This is the *Kernel mode* wrapper that provides the needed services needed by the WinCert library. Use this library when creating a kernel mode driver.
+- WinCertU: This is the *User mode* wrapper that provides the services required by the WinCert library. Use this library when creating a user mode application and/or library.
+- WinCertK: This is the *Kernel mode* wrapper that provides the services required by the WinCert library. Use this library when creating a kernel mode driver.
 
 ## Usage
 In order to use the library you need to call one of the functions below.
