@@ -60,7 +60,7 @@ ImgBuildHashBlobArray(
         //
         // Gather all the information we need and perform all checks now
         // before we start with the crypto API - this will simplifies the
-        // cleanup in case an error.
+        // cleanup in case of an error.
         //
         NtHeaders = RtlImageNtHeader(ImageBase);
         if (!NtHeaders)
@@ -196,6 +196,7 @@ ImgBuildHashBlobArray(
 
         //
         // #5
+        //
         Blobs[NextBlob].pBlobData = RtlOffsetToPointer(Checksum, sizeof(NtHeaders->OptionalHeader.CheckSum));
         Blobs[NextBlob].cbSize = RtlPointerToOffset(Blobs[1].pBlobData, SecurityDir);
         NextBlob++;
